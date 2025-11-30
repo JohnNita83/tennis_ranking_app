@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: flask-tournament-app
+    env: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn app:app --preload --workers=2 --timeout=120
+    pythonVersion: 3.12
