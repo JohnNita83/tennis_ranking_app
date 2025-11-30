@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block content %}
+<h2>Entries for Tournament {{ tournament_id }}</h2>
+
+<div class="table-responsive" style="overflow-x: auto; white-space: nowrap;">
+  <table class="table table-sm table-striped align-middle">
+    <thead class="table-light">
+      <tr>
+        <th>#</th>
+        <th>Draw</th>
+        <th>Player</th>
+        <th>Seed</th>
+        <th>Rank</th>
+        <th>Age Group</th>
+        <th>WTN</th>
+        <th>Ranking Points</th>
+        <th>Year of Birth</th>
+        <th>Tournaments</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for entry in entries %}
+      <tr>
+        <td>{{ loop.index }}</td>
+        <td>{{ entry.draw }}</td>
+        <td>{{ entry.player }}</td>
+        <td>{{ entry.seed }}</td>
+        <td>{{ entry.rank }}</td>
+        <td>{{ entry.agegroup }}</td>
+        <td>{{ entry.wtn }}</td>
+        <td>{{ entry.ranking_points }}</td>
+        <td>{{ entry.year_of_birth }}</td>
+        <td>{{ entry.tournaments }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endblock %}

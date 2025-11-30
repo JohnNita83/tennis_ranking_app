@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h5 class="card-title mb-3">Ranking Points Table</h5>
+
+    {% if saved %}
+    <div class="alert alert-success">
+      Points saved successfully.
+    </div>
+    {% endif %}
+
+    <p class="text-muted">
+      Set ranking points by finishing place (rows) and tournament level (columns).
+    </p>
+
+    <form method="post" action="{{ url_for('points') }}">
+      <div class="table-responsive" style="overflow-x: auto; white-space: nowrap;">
+        <table class="table table-sm table-bordered align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Place</th>
+              {% for col_name, display_name in point_columns %}
+              <th>{{ display_name }}</th>
+              {% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            <tr>
+              <td><strong>{{ row["Place"] }}</strong></td>
+              {% for col_name, display_name in point_columns %}
+              {% set field_name = col_name ~ "_" ~ row["Place"] %}
+              <td style="min-width: 70px;">
+                <input
+                  type="number"
+                  class="form-control form-control-sm"
+                  name="{{ field_name }}"
+                  value="{{ row[col_name] if row[col_name] is not none }}"
+                />
+              </td>
+              {% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <button type="submit" class="btn btn-primary mt-3">
+        Save points
+      </button>
+    </form>
+  </div>
+</div>
+{% endblock %}

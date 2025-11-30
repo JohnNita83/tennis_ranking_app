@@ -1,0 +1,4 @@
+F:
+cd onedrive\desktop\tennis_ranking_app
+venv\Scripts\activate - Acivate venv to be able to run the app
+python app.py - Run the app

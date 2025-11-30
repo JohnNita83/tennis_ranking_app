@@ -1,0 +1,122 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h5 class="card-title mb-3">
+  Rankings – {{ age_group }} – Week {{ week }}
+  {% if updated_at %}
+  <small class="text-muted">(Updated at {{ updated_at }})</small>
+  {% endif %}
+</h5>
+
+
+    <form
+      class="row g-2 mb-3"
+      method="get"
+      action="{{ url_for('rankings') }}"
+    >
+      <div class="col-4 col-md-3">
+        <label class="form-label">Age group</label>
+        <select
+          name="age_group"
+          class="form-select"
+          onchange="this.form.submit()"
+        >
+          {% for ag in age_groups %}
+          <option
+            value="{{ ag }}"
+            {% if ag == age_group %}selected{% endif %}
+          >
+            {{ ag }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-4 col-md-3">
+        <label class="form-label">Week</label>
+        <select
+          name="week"
+          class="form-select"
+          onchange="this.form.submit()"
+        >
+          {% for w in weeks %}
+          <option
+            value="{{ w }}"
+            {% if w == week %}selected{% endif %}
+          >
+            {{ w }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="col-4 col-md-3">
+        <label class="form-label">Search Player</label>
+        <input 
+          type="text" 
+          id="searchBox" 
+          name="q" 
+          placeholder="Search player..." 
+          value="{{ q }}" 
+          class="form-select"
+        >
+      </div>
+
+    </form>
+    
+
+    {% if rows %}
+  
+  <div class="table-responsive" style="overflow-x: auto; white-space: nowrap;">
+    <table id="rankingsTable" class="table table-striped table-sm align-middle">
+      <thead>
+        <tr>
+          {% for col in rows[0].keys() %}
+            {% if col != "UpdatedAt" %}
+              <th>{{ col }}</th>
+            {% endif %}
+          {% endfor %}
+        </tr>
+      </thead>
+
+      <tbody>
+        {% for r in rows %}
+          <tr>
+            {% for col in r.keys() %}
+              {% if col != "UpdatedAt" %}
+                <td>{{ r[col] }}</td>
+              {% endif %}
+            {% endfor %}
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <p>No data available for this selection.</p>
+{% endif %}
+
+<script>
+document.addEventListener("DOMContentLoaded", function() {
+  const searchInput = document.querySelector('input[name="q"]');
+  const table = document.getElementById("rankingsTable");
+  const rows = table.getElementsByTagName("tr");
+
+  searchInput.addEventListener("keyup", function() {
+    const filter = searchInput.value.toLowerCase();
+    for (let i = 1; i < rows.length; i++) { // skip header row
+      const playerCell = rows[i].getElementsByTagName("td")[1]; // Player column
+      if (playerCell) {
+        const text = playerCell.textContent || playerCell.innerText;
+        rows[i].style.display = text.toLowerCase().includes(filter) ? "" : "none";
+      }
+    }
+  });
+});
+</script>
+
+
+  </div>
+</div>
+{% endblock %}

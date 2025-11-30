@@ -1,0 +1,317 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h5 class="card-title mb-3">Tournaments – {{ player_name }} ({{ age_group }})</h5>
+
+    <form class="row g-2 mb-3" method="get" action="{{ url_for('tournaments') }}">
+      <div class="col-12 col-md-4">
+        <label class="form-label">Player name</label>
+        <input
+          type="text"
+          name="player"
+          class="form-control"
+          value="{{ player_name }}"
+        />
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label">Ranking Age Group</label>
+        <select name="age_group" class="form-select">
+          {% for ag in age_groups %}
+          <option value="{{ ag }}" {% if ag == age_group %}selected{% endif %}>
+            {{ ag }}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="col-12 col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">Apply</button>
+      </div>
+    </form>
+
+    <form class="row g-2 mb-3" method="post" action="{{ url_for('tournaments') }}">
+      <input type="hidden" name="player_name" value="{{ player_name }}" />
+      <input type="hidden" name="age_group" value="{{ age_group }}" />
+      <input type="hidden" name="action" value="add_domestic" />
+      <div class="col-12 col-md-4">
+        <label class="form-label">Tournament ID (TI)</label>
+        <input
+          type="text"
+          name="tournament_id"
+          class="form-control"
+          placeholder="E1D2AD7A-92B3-4D05-A73D-F3A66FD7C01F"
+        />
+      </div>
+      <div class="col-12 col-md-2 d-flex align-items-end">
+        <button type="submit" class="btn btn-outline-primary w-100">
+          Add tournament
+        </button>
+      </div>
+    </form>
+
+    <form class="row g-2 mb-3" method="post" action="{{ url_for('tournaments') }}">
+      <input type="hidden" name="player_name" value="{{ player_name }}" />
+      <input type="hidden" name="age_group" value="{{ age_group }}" />
+      <input type="hidden" name="action" value="add_international" />
+      <div class="col-12 col-md-3 d-flex align-items-end">
+        <button type="submit" class="btn btn-outline-warning w-100">
+          Add international tournament
+        </button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="row mb-3">
+  <!-- Summary: Won/Lost/Matches -->
+  <div class="col-12 col-lg-3 mb-3">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h6 class="card-title mb-3">Match Summary</h6>
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered mb-0 text-center align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>Won</th>
+                <th>Lost</th>
+                <th>Matches</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="text-success fw-bold">{{ totals.total_won }}</td>
+                <td class="text-danger fw-bold">{{ totals.total_lost }}</td>
+                <td class="fw-bold">{{ totals.total_matches }}</td>
+              </tr>
+              <tr>
+                <td class="text-success">
+                  {{ "%.1f"|format(totals.won_pct) }}%
+                </td>
+                <td class="text-danger">
+                  {{ "%.1f"|format(totals.lost_pct) }}%
+                </td>
+                <td>%</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary: Tournament categories count -->
+  <div class="col-12 col-lg-9 mb-3">
+    <div class="card shadow-sm">
+      <div class="card-body">
+        <h6 class="card-title mb-3">Tournaments by Category</h6>
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered mb-0 text-center align-middle">
+            <thead class="table-light">
+              <tr>
+                {% for col_code, display_name in point_columns %}
+                  <th>{{ display_name }}</th>
+                {% endfor %}
+                <th>TOTAL</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                {% set ns = namespace(total=0) %}
+                {% for col_code, display_name in point_columns %}
+                  {% set count = cat_counts[col_code] %}
+                  <td>{{ count }}</td>
+                  {% set ns.total = ns.total + (count or 0) %}
+                {% endfor %}
+                <td class="fw-bold">{{ ns.total }}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<form method="post" action="{{ url_for('tournaments') }}">
+  <input type="hidden" name="player_name" value="{{ player_name }}" />
+  <input type="hidden" name="age_group" value="{{ age_group }}" />
+  <input type="hidden" name="action" value="save" />
+
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center mb-2">
+        <h6 class="card-title mb-0">Tournament List</h6>
+        <button type="submit" class="btn btn-sm btn-success">
+          Save changes
+        </button>
+      </div>
+
+      <h3>{{ player_name }} – {{ age_group }}</h3>
+
+      <div class="table-responsive" style="overflow-x: auto; white-space: nowrap;">
+        <table class="table table-sm table-striped align-middle">
+          <thead class="table-light">
+            <tr>
+              <th></th>
+              <th>#</th>
+              <th>Start</th>
+              <th>Finish</th>
+              <th>Tournament</th>
+              <th>Category</th>
+              <th>Opens</th>
+              <th>Close</th>
+              <th>Place</th>
+              <th>Points</th>
+              <th>Rnk points</th>
+              <th>Rank</th>
+              <th>+/-</th>
+              <th>↑↓</th>
+              <th>Won</th>
+              <th>Lost</th>
+              <th>Matches</th>
+              <th>Event</th>
+              <th>Link</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for r in rows %}
+            <tr>
+              <td>
+                <form
+                  method="post"
+                  action="{{ url_for('delete_tournament', row_id=r.id) }}"
+                  onsubmit="return confirm('Delete this tournament?');"
+                >
+                  <input type="hidden" name="player_name" value="{{ player_name }}" />
+                  <input type="hidden" name="age_group" value="{{ age_group }}" />
+                  <button type="submit" class="btn btn-sm btn-danger">-</button>
+                </form>
+              </td>
+              <td style= "font-size: .875rem; text-align: center;">{{ r.no }}</td>
+              <td style= "font-size: .875rem;">
+                <input type="date" name="start_{{ r.id }}" value="{{ r.start_date or '' }}" style="width:auto; max-width:100px;">
+              </td>
+              <td style= "font-size: .875rem;">
+                <input type="date" name="finish_{{ r.id }}" value="{{ r.end_date or '' }}" style="width:auto; max-width:100px;">
+              </td>
+
+              <td>
+                {% set name = r.tournament_name or '' %}
+                {% set ch_len = name|length %}
+                <input type="text"
+                       name="name_{{ r.id }}"
+                       value="{{ name }}"
+                       class="form-control form-control-sm"
+                       size="{{ ch_len }}"
+                       style="min-width: 25ch; max-width: 60ch; width: auto; padding-right:0px;">
+              </td>
+
+              <td style= "font-size: .875rem;">
+                <input type="hidden" name="row_id" value="{{ r.id }}" />
+                <select
+                  name="cat_{{ r.id }}"
+                  class="form-select form-select-sm"
+                  style="width:auto; max-width:200px;"
+                >
+                  <option value=""></option>
+                  {% for col_code, display_name in point_columns %}
+                  <option
+                    value="{{ col_code }}"
+                    {% if r.cat_code == col_code %}selected{% endif %}
+                  >
+                    {{ display_name }}
+                  </option>
+                  {% endfor %}
+                </select>
+              </td>
+              
+              <td style= "font-size: .875rem;">
+                <input type="date" name="opens_{{ r.id }}" value="{{ r.opens_date or '' }}" style="width:auto; max-width:100px;">
+              </td>
+
+              <td style= "font-size: .875rem;">
+                <input type="date" name="close_{{ r.id }}" value="{{ r.close_date or '' }}" style="width:auto; max-width:100px;">
+              </td>
+
+              <td style= "font-size: .875rem;">
+                <input
+                  type="number"
+                  class="form-control form-control-sm"
+                  name="place_{{ r.id }}"
+                  value="{{ r.place if r.place is not none }}"
+                  style="width:auto; max-width:50px;"
+                />
+              </td>
+              <td style= "font-size: .875rem; text-align: center;">
+                {{ r.points if r.points is not none else "" }}
+              </td>
+
+              <td style= "font-size: .875rem; text-align: center;">{{ r.ranking_points }}</td>
+              <td style= "font-size: .875rem; text-align: center;">{{ r.rank if r.rank is not none else "" }}</td>
+              <td style= "font-size: .875rem; text-align: center;"
+                {% if r.diff is not none %}
+                  {% if r.diff > 0 %}class="text-success"{% elif r.diff < 0 %}class="text-danger"{% else %}class="text-warning"{% endif %}
+                {% endif %}
+              >
+                {% if r.diff is not none %}
+                  {{ r.diff }}
+                {% endif %}
+              </td>
+              <td style= "font-size: .875rem;">
+                {% if r.arrow == "up" %}
+                  <span class="text-success">↑</span>
+                {% elif r.arrow == "down" %}
+                  <span class="text-danger">↓</span>
+                {% elif r.arrow == "same" %}
+                  <span class="text-warning">-</span>
+                {% endif %}
+              </td>
+              <td style= "font-size: .875rem;">
+                <input
+                  type="number"
+                  class="form-control form-control-sm text-success"
+                  name="won_{{ r.id }}"
+                  value="{{ r.won }}"
+                  style="width:auto; max-width:40px;"
+                />
+              </td>
+              <td style= "font-size: .875rem;">
+                <input
+                  type="number"
+                  class="form-control form-control-sm text-danger"
+                  name="lost_{{ r.id }}"
+                  value="{{ r.lost }}"
+                  style="width:auto; max-width:40px;"
+                />
+              </td>
+              <td style= "font-size: .875rem; text-align: center;"
+                {% if r.won > r.lost %}class="text-success"
+                {% elif r.won < r.lost %}class="text-danger"
+                {% else %}class="text-warning"
+                {% endif %}
+              >
+                {{ r.matches }}
+              </td>
+              <td>
+                {% if not r.is_international %}
+                  <input type="number" name="event_{{ r.id }}" value="{{ r.event_id or '' }}">
+                {% else %}
+                  -
+                {% endif %}
+              </td>
+              <td>
+                {% if r.event_id %}
+                  <a href="{{ url_for('entries', tournament_id=r.tournament_id, event_id=r.event_id) }}">Get entries</a>
+                {% endif %}
+              </td>
+
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</form>
+{% endblock %}

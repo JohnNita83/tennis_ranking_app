@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h5 class="card-title mb-3">Database Administration</h5>
+
+    {% if status %}
+    <div class="alert alert-success">
+      {{ status }}
+    </div>
+    {% endif %}
+
+    {% if error %}
+    <div class="alert alert-danger">
+      {{ error }}
+    </div>
+    {% endif %}
+
+    <div class="row g-3">
+      <!-- Update Database -->
+      <div class="col-12 col-md-4">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body d-flex flex-column">
+            <h6 class="card-title">Update Database</h6>
+            <p class="card-text flex-grow-1">
+              Fetch the latest rankings (current week) for all configured categories.
+            </p>
+            <form method="post" action="{{ url_for('database_admin') }}">
+              <input type="hidden" name="action" value="update" />
+              <button type="submit" class="btn btn-primary w-100">
+                Update now
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Erase Database -->
+      <div class="col-12 col-md-4">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body d-flex flex-column">
+            <h6 class="card-title">Erase Database</h6>
+            <p class="card-text flex-grow-1 text-danger">
+              Delete all ranking weeks. This cannot be undone.
+            </p>
+            <form
+              method="post"
+              action="{{ url_for('database_admin') }}"
+              onsubmit="return confirm('Are you sure you want to reset the rankings database?');"
+            >
+              <input type="hidden" name="action" value="erase" />
+              <button type="submit" class="btn btn-danger w-100">
+                Erase rankings
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+      <!-- Add Ranking Week -->
+      <div class="col-12 col-md-4">
+        <div class="card h-100 shadow-sm">
+          <div class="card-body d-flex flex-column">
+            <h6 class="card-title">Add Ranking Week</h6>
+            <p class="card-text">
+              Import an older ranking week using its TI WeekID.
+            </p>
+            <form method="post" action="{{ url_for('database_admin') }}">
+              <input type="hidden" name="action" value="add_week" />
+              <div class="mb-2">
+                <label class="form-label">Week ID (TI)</label>
+                <input
+                  type="text"
+                  name="week_id"
+                  class="form-control"
+                  placeholder="e.g. 49157"
+                  required
+                />
+                <div class="form-text">
+                  From URL like:
+                  <code>?id=49157&amp;category=2068</code>
+                </div>
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Week label (optional)</label>
+                <input
+                  type="text"
+                  name="week_label"
+                  class="form-control"
+                  placeholder="e.g. 47-2025"
+                />
+                <div class="form-text">
+                  Used in the Week column (e.g. 47-2025). If left blank, WeekID will be used.
+                </div>
+              </div>
+              <button type="submit" class="btn btn-outline-primary w-100">
+                Add ranking week
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card shadow-sm">
+  <div class="card-body">
+    <h5 class="card-title mb-3">Player Ranking History</h5>
+
+    <form
+      class="row g-2 mb-3"
+      method="get"
+      action="{{ url_for('player') }}"
+    >
+      <div class="col-12 col-md-6">
+        <label for="name" class="form-label">Player name</label>
+        <input
+          type="text"
+          class="form-control"
+          id="name"
+          name="name"
+          placeholder="e.g. Kevin Nita"
+          value="{{ name or '' }}"
+        />
+      </div>
+      <div class="col-12 col-md-3 d-flex align-items-end">
+        <button type="submit" class="btn btn-primary w-100">
+          Search
+        </button>
+      </div>
+    </form>
+
+    {% if name and not rows %}
+    <p>No ranking history found for <strong>{{ name }}</strong>.</p>
+    {% endif %}
+
+    {% if rows %}
+    <h6 class="mb-3">Results for <strong>{{ name }}</strong></h6>
+
+    <div class="table-responsive" style="overflow-x: auto; white-space: nowrap;">
+      <table class="table table-striped table-sm align-middle">
+        <thead>
+          <tr>
+            <th>Week</th>
+            <th>AgeGroup</th>
+            <th>Rank</th>
+            <th>Player</th>
+            <th>Ranking points</th>
+            <th>Total points</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in rows %}
+          <tr>
+            <td>{{ r["Week"] }}</td>
+            <td>{{ r["AgeGroup"] }}</td>
+            <td>{{ r["Rank"] }}</td>
+            <td>{{ r["Player"] }}</td>
+            <td>{{ r["Ranking points"] }}</td>
+            <td>{{ r["Total points"] }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
