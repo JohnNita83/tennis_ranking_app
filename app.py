@@ -292,24 +292,25 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
           AND age_group = ?
         ORDER BY start_date, id
         """,
-        (player_name, age_group),   # 👈 supply both values
+        (player_name, age_group),
     )
     db_rows = cur.fetchall()
     conn.close()
 
     rows = []
-    points_list = []   # for computing top-6 per row
+    points_list = []
     prev_rank = None
 
     total_won = 0
     total_lost = 0
     cat_counts = {code: 0 for code, _disp in POINT_COLUMNS}
+    cat_points = {code: 0 for code, _disp in POINT_COLUMNS}   # 👈 new dict
 
     for idx, r in enumerate(db_rows, start=1):
         row_id = r["id"]
         start_date = r["start_date"]
         end_date = r["end_date"]
-        cat_code = r["category_code"]  # internal code like T100, TP500 etc.
+        cat_code = r["category_code"]
         place = r["place"]
         won = r["won"] if r["won"] is not None else 0
         lost = r["lost"] if r["lost"] is not None else 0
@@ -325,13 +326,17 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         if place is not None and cat_code and place in points_map:
             pts = points_map[place].get(cat_code)
 
+        # 👇 accumulate points per category
+        if pts is not None and cat_code in cat_points:
+            cat_points[cat_code] += pts
+
         points_list.append(pts if pts is not None else 0)
 
         # RankingPoints = sum of top 6 points from rows up to this one
         top6 = sorted(points_list, reverse=True)[:6]
         ranking_points = sum(top6)
 
-        # Rank: use end_date, add 1 week → look up rankings_map
+        # Rank lookup logic (unchanged)
         rank_value = None
         if end_date:
             try:
@@ -346,7 +351,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         diff = None
         arrow = None
         if rank_value is not None and prev_rank is not None:
-            diff = prev_rank - rank_value  # positive if improved (lower number)
+            diff = prev_rank - rank_value
             if diff > 0:
                 arrow = "up"
             elif diff < 0:
@@ -357,30 +362,28 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
 
         matches = won + lost
 
-        rows.append(
-            {
-                "id": row_id,
-                "no": idx,
-                "start_date": start_date,
-                "end_date": end_date,
-                "tournament_name": r["tournament_name"],
-                "cat_code": r["category_code"],
-                "opens_date": r["opens_date"],
-                "close_date": r["close_date"],
-                "place": place,
-                "points": pts,
-                "ranking_points": ranking_points,
-                "rank": rank_value,
-                "diff": diff,
-                "arrow": arrow,
-                "won": won,
-                "lost": lost,
-                "matches": matches,
-                "tournament_id": r["tournament_id"],
-                "is_international": r["is_international"],
-                "event_id": r["event_id"],   # 👈 add this line
-            }
-        )
+        rows.append({
+            "id": row_id,
+            "no": idx,
+            "start_date": start_date,
+            "end_date": end_date,
+            "tournament_name": r["tournament_name"],
+            "cat_code": cat_code,
+            "opens_date": r["opens_date"],
+            "close_date": r["close_date"],
+            "place": place,
+            "points": pts,
+            "ranking_points": ranking_points,
+            "rank": rank_value,
+            "diff": diff,
+            "arrow": arrow,
+            "won": won,
+            "lost": lost,
+            "matches": matches,
+            "tournament_id": r["tournament_id"],
+            "is_international": r["is_international"],
+            "event_id": r["event_id"],
+        })
 
     total_matches = total_won + total_lost
     won_pct = (total_won / total_matches * 100) if total_matches > 0 else 0
@@ -396,7 +399,9 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
             "lost_pct": lost_pct,
         },
         "cat_counts": cat_counts,
+        "cat_points": cat_points,   # 👈 now returned
     }
+
 
 
 def get_db_connection():
@@ -866,6 +871,7 @@ def tournaments():
     rows = view["rows"]
     totals = view["totals"]
     cat_counts = view["cat_counts"]
+    cat_points = view["cat_points"]   # 👈 extract from view
 
     return render_template(
         "tournaments.html",
@@ -875,8 +881,11 @@ def tournaments():
         rows=rows,
         totals=totals,
         cat_counts=cat_counts,
+        cat_points=cat_points,   # 👈 now defined
         point_columns=POINT_COLUMNS,
     )
+
+
 
    
 @app.route("/tournaments/delete/<int:row_id>", methods=["POST"])

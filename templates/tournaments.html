@@ -100,36 +100,52 @@
   </div>
 
   <!-- Summary: Tournament categories count -->
-  <div class="col-12 col-lg-9 mb-3">
-    <div class="card shadow-sm">
-      <div class="card-body">
-        <h6 class="card-title mb-3">Tournaments by Category</h6>
-        <div class="table-responsive">
-          <table class="table table-sm table-bordered mb-0 text-center align-middle">
-            <thead class="table-light">
-              <tr>
-                {% for col_code, display_name in point_columns %}
-                  <th>{{ display_name }}</th>
-                {% endfor %}
-                <th>TOTAL</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                {% set ns = namespace(total=0) %}
-                {% for col_code, display_name in point_columns %}
-                  {% set count = cat_counts[col_code] %}
-                  <td>{{ count }}</td>
-                  {% set ns.total = ns.total + (count or 0) %}
-                {% endfor %}
-                <td class="fw-bold">{{ ns.total }}</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+<div class="col-12 col-lg-9 mb-3">
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h6 class="card-title mb-3">Tournaments by Category</h6>
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered mb-0 text-center align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Cat</th>
+              {% for col_code, display_name in point_columns %}
+                <th>{{ display_name }}</th>
+              {% endfor %}
+              <th>TOTAL</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- No. row -->
+            <tr>
+              <td>No.</td>
+              {% set ns = namespace(total=0) %}
+              {% for col_code, display_name in point_columns %}
+                {% set count = cat_counts[col_code] %}
+                <td>{{ count }}</td>
+                {% set ns.total = ns.total + (count or 0) %}
+              {% endfor %}
+              <td class="fw-bold">{{ ns.total }}</td>
+            </tr>
+
+            <!-- Pts row -->
+            <tr>
+              <td>Pts</td>
+              {% set ns = namespace(total=0) %}
+              {% for col_code, display_name in point_columns %}
+                {% set pts = cat_points[col_code] %}
+                <td>{{ pts }}</td>
+                {% set ns.total = ns.total + (pts or 0) %}
+              {% endfor %}
+              <td class="fw-bold">{{ ns.total }}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </div>
   </div>
+</div>
+
 
 </div>
 
