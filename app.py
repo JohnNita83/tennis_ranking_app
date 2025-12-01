@@ -392,12 +392,17 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
             "event_id": r["event_id"],
         })
 
-    # Mark top 6 points
-    all_points = [r["points"] for r in rows if r["points"] is not None]
-    top6_points = sorted(all_points, reverse=True)[:6]
+        # Mark top 6 points by position, not value
+        scored_rows = [(idx, r["points"]) for idx, r in enumerate(rows) if r["points"] is not None]
+        scored_rows.sort(key=lambda x: x[1], reverse=True)
 
-    for r in rows:
-        r["is_top6"] = r["points"] in top6_points
+        # Take exactly the first 6 indices
+        top6_indices = {idx for idx, pts in scored_rows[:6]}
+
+        # Mark rows
+        for idx, r in enumerate(rows):
+            r["is_top6"] = idx in top6_indices
+
 
 
     total_matches = total_won + total_lost
