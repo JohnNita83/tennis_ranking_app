@@ -270,8 +270,10 @@ def load_rankings():
 
 
 def get_week_label_for_date(d: date) -> str:
-    iso_year, iso_week, _ = d.isocalendar()
-    return f"{iso_week}-{iso_year}"
+    # ISO week number
+    week_num = d.isocalendar()[1]
+    year = d.isocalendar()[0]
+    return f"{week_num}-{year}"
 
 
 def build_tournament_view(player_name: str, age_group: str) -> dict:
@@ -344,8 +346,12 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
                 next_week_date = d + timedelta(days=7)
                 wk_label = get_week_label_for_date(next_week_date)
                 rank_value = rankings_map.get(wk_label)
-            except Exception:
+            except Exception as e:
+                print("Ranking lookup failed:", e)
                 rank_value = None
+
+        print("End date:", end_date, "Next week:", next_week_date, "Label:", wk_label)
+
 
         # +/- diff vs previous
         diff = None
@@ -367,6 +373,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
             "no": idx,
             "start_date": start_date,
             "end_date": end_date,
+            "wk_label": wk_label,
             "tournament_name": r["tournament_name"],
             "cat_code": cat_code,
             "opens_date": r["opens_date"],
@@ -384,6 +391,14 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
             "is_international": r["is_international"],
             "event_id": r["event_id"],
         })
+
+    # Mark top 6 points
+    all_points = [r["points"] for r in rows if r["points"] is not None]
+    top6_points = sorted(all_points, reverse=True)[:6]
+
+    for r in rows:
+        r["is_top6"] = r["points"] in top6_points
+
 
     total_matches = total_won + total_lost
     won_pct = (total_won / total_matches * 100) if total_matches > 0 else 0
@@ -1124,13 +1139,33 @@ def entries(tournament_id):
     # Convert rank to numeric
     rankings_df["rank_num"] = pd.to_numeric(rankings_df["rank"], errors="coerce")
 
-    # Keep only the latest week
-    latest_week = rankings_df["week"].max()
-    latest_rankings = rankings_df[rankings_df["week"] == latest_week].copy()
+    # ✅ Decide which week to use based on close_date
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT close_date FROM tournaments WHERE tournament_id = ?", (tournament_id,))
+    row = cur.fetchone()
+    conn.close()
+    close_date = row["close_date"] if row else None
+
+    today = datetime.utcnow().date()
+    if close_date:
+        close_date_obj = datetime.fromisoformat(close_date).date()
+        if today < close_date_obj:
+            # Use latest week
+            target_week = rankings_df["week"].max()
+        else:
+            # Use the week of the close date
+            week_num = close_date_obj.isocalendar()[1]
+            year = close_date_obj.isocalendar()[0]
+            target_week = f"{week_num}-{year}"
+    else:
+        target_week = rankings_df["week"].max()
+
+    selected_rankings = rankings_df[rankings_df["week"] == target_week].copy()
 
     # For each player_norm, keep the lowest rank across all age groups
     best_rankings = (
-        latest_rankings.loc[latest_rankings.groupby("player_norm")["rank_num"].idxmin()]
+        selected_rankings.loc[selected_rankings.groupby("player_norm")["rank_num"].idxmin()]
         .reset_index(drop=True)
     )
 
@@ -1162,10 +1197,8 @@ def entries(tournament_id):
     # ✅ Apply your custom sort
     merged_df = sort_entries(merged_df)
 
-
     entries = merged_df.to_dict(orient="records")
     return render_template("entries.html", tournament_id=tournament_id, event_id=event_id, entries=entries)
-
 
 
     

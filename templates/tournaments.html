@@ -1,5 +1,17 @@
 {% extends "base.html" %}
 {% block content %}
+<head>
+  <style>
+    .table-drag-container {
+      overflow-x: auto;
+      cursor: grab;
+    }
+    .table-drag-container:active {
+      cursor: grabbing;
+    }
+  </style>
+</head>
+<body>
 <div class="card shadow-sm mb-3">
   <div class="card-body">
     <h5 class="card-title mb-3">Tournaments – {{ player_name }} ({{ age_group }})</h5>
@@ -72,9 +84,9 @@
           <table class="table table-sm table-bordered mb-0 text-center align-middle">
             <thead class="table-light">
               <tr>
-                <th>Won</th>
-                <th>Lost</th>
-                <th>Matches</th>
+                <th class="fw-bold">Won</th>
+                <th class="fw-bold">Lost</th>
+                <th class="fw-bold">Matches</th>
               </tr>
             </thead>
             <tbody>
@@ -139,12 +151,29 @@
               {% endfor %}
               <td class="fw-bold">{{ ns.total }}</td>
             </tr>
+
+            <!-- Avg row -->
+            <tr>
+              <td>Avg</td>
+              {% set ns = namespace(total_points=0, total_counts=0) %}
+              {% for col_code, display_name in point_columns %}
+                {% set pts = cat_points[col_code] %}
+                {% set count = cat_counts[col_code] %}
+                {% set avg = (pts // count) if count > 0 else 0 %}
+                <td>{{ avg }}</td>
+                {% set ns.total_points = ns.total_points + (pts or 0) %}
+                {% set ns.total_counts = ns.total_counts + (count or 0) %}
+              {% endfor %}
+              {% set total_avg = (ns.total_points // ns.total_counts) if ns.total_counts > 0 else 0 %}
+              <td class="fw-bold">{{ total_avg }}</td>
+            </tr>
           </tbody>
         </table>
       </div>
     </div>
   </div>
 </div>
+
 
 
 </div>
@@ -165,7 +194,7 @@
 
       <h3>{{ player_name }} – {{ age_group }}</h3>
 
-      <div class="table-responsive" style="overflow-x: auto; white-space: nowrap;">
+      <div class="table-responsive table-drag-container" style="overflow-x: auto; white-space: nowrap;">
         <table class="table table-sm table-striped align-middle">
           <thead class="table-light">
             <tr>
@@ -192,6 +221,7 @@
           </thead>
           <tbody>
             {% for r in rows %}
+            {% set min_rank = rows | map(attribute='rank') | reject('equalto', None) | min %}
             <tr>
               <td>
                 <form
@@ -204,11 +234,11 @@
                   <button type="submit" class="btn btn-sm btn-danger">-</button>
                 </form>
               </td>
-              <td style= "font-size: .875rem; text-align: center;">{{ r.no }}</td>
-              <td style= "font-size: .875rem;">
+              <td style="font-size: .875rem; text-align: center;">{{ r.no }}</td>
+              <td style="font-size: .875rem;">
                 <input type="date" name="start_{{ r.id }}" value="{{ r.start_date or '' }}" style="width:auto; max-width:100px;">
               </td>
-              <td style= "font-size: .875rem;">
+              <td style="font-size: .875rem;">
                 <input type="date" name="finish_{{ r.id }}" value="{{ r.end_date or '' }}" style="width:auto; max-width:100px;">
               </td>
 
@@ -216,14 +246,14 @@
                 {% set name = r.tournament_name or '' %}
                 {% set ch_len = name|length %}
                 <input type="text"
-                       name="name_{{ r.id }}"
-                       value="{{ name }}"
-                       class="form-control form-control-sm"
-                       size="{{ ch_len }}"
-                       style="min-width: 25ch; max-width: 48ch; width: auto; padding-right:0px;">
+                      name="name_{{ r.id }}"
+                      value="{{ name }}"
+                      class="form-control form-control-sm"
+                      size="{{ ch_len }}"
+                      style="min-width: 25ch; max-width: 48ch; width: auto; padding-right:0px;">
               </td>
 
-              <td style= "font-size: .875rem;">
+              <td style="font-size: .875rem;">
                 <input type="hidden" name="row_id" value="{{ r.id }}" />
                 <select
                   name="cat_{{ r.id }}"
@@ -242,15 +272,15 @@
                 </select>
               </td>
               
-              <td style= "font-size: .875rem;">
+              <td style="font-size: .875rem;">
                 <input type="date" name="opens_{{ r.id }}" value="{{ r.opens_date or '' }}" style="width:auto; max-width:100px;">
               </td>
 
-              <td style= "font-size: .875rem;">
+              <td style="font-size: .875rem;">
                 <input type="date" name="close_{{ r.id }}" value="{{ r.close_date or '' }}" style="width:auto; max-width:100px;">
               </td>
 
-              <td style= "font-size: .875rem;">
+              <td style="font-size: .875rem;">
                 <input
                   type="number"
                   class="form-control form-control-sm"
@@ -259,13 +289,19 @@
                   style="width:auto; max-width:50px;"
                 />
               </td>
-              <td style= "font-size: .875rem; text-align: center;">
+
+              <!-- Points column with highlight -->
+              <td class="{% if r.is_top6 %}fw-bold text-success{% endif %}" style="font-size: .875rem; text-align: center;">
                 {{ r.points if r.points is not none else "" }}
               </td>
 
-              <td style= "font-size: .875rem; text-align: center;">{{ r.ranking_points }}</td>
-              <td style= "font-size: .875rem; text-align: center;">{{ r.rank if r.rank is not none else "" }}</td>
-              <td style= "font-size: .875rem; text-align: center;"
+              <!-- Ranking points column (no highlight) -->
+              <td style="font-size: .875rem; text-align: center;">{{ r.ranking_points }}</td>
+
+              <td class="{% if r.rank == min_rank %}fw-bold text-success{% endif %}" style="font-size: .875rem; text-align: center;">
+                {{ r.rank if r.rank is not none else "" }}
+              </td>
+              <td style="font-size: .875rem; text-align: center;"
                 {% if r.diff is not none %}
                   {% if r.diff > 0 %}class="text-success"{% elif r.diff < 0 %}class="text-danger"{% else %}class="text-warning"{% endif %}
                 {% endif %}
@@ -274,7 +310,7 @@
                   {{ r.diff }}
                 {% endif %}
               </td>
-              <td style= "font-size: .875rem;">
+              <td style="font-size: .875rem;">
                 {% if r.arrow == "up" %}
                   <span class="text-success">↑</span>
                 {% elif r.arrow == "down" %}
@@ -283,7 +319,7 @@
                   <span class="text-warning">-</span>
                 {% endif %}
               </td>
-              <td style= "font-size: .875rem;">
+              <td style="font-size: .875rem;">
                 <input
                   type="number"
                   class="form-control form-control-sm text-success"
@@ -292,7 +328,7 @@
                   style="width:auto; max-width:40px;"
                 />
               </td>
-              <td style= "font-size: .875rem;">
+              <td style="font-size: .875rem;">
                 <input
                   type="number"
                   class="form-control form-control-sm text-danger"
@@ -301,7 +337,7 @@
                   style="width:auto; max-width:40px;"
                 />
               </td>
-              <td style= "font-size: .875rem; text-align: center;"
+              <td style="font-size: .875rem; text-align: center;"
                 {% if r.won > r.lost %}class="text-success"
                 {% elif r.won < r.lost %}class="text-danger"
                 {% else %}class="text-warning"
@@ -309,26 +345,57 @@
               >
                 {{ r.matches }}
               </td>
-              <td style= "font-size: .875rem;">
+              <td style="font-size: .875rem;">
                 {% if not r.is_international %}
                   <input type="number" name="event_{{ r.id }}" value="{{ r.event_id or '' }}"
-                         style="width:auto; max-width:40px;">
+                        style="width:auto; max-width:40px;">
                 {% else %}
                   -
                 {% endif %}
               </td>
-              <td style= "font-size: 1.5rem; text-align: center;">
+              <td style="font-size: 1.5rem; text-align: center;">
                 {% if r.event_id %}
                   <a href="{{ url_for('entries', tournament_id=r.tournament_id, event_id=r.event_id) }}" style="text-decoration: none; color: green;">⇲</a>
                 {% endif %}
               </td>
-
             </tr>
             {% endfor %}
           </tbody>
+
         </table>
       </div>
     </div>
   </div>
 </form>
+<script>
+  const dragContainer = document.querySelector('.table-drag-container');
+
+  let isDown = false;
+  let startX;
+  let scrollLeft;
+
+  dragContainer.addEventListener('mousedown', (e) => {
+    isDown = true;
+    startX = e.pageX - dragContainer.offsetLeft;
+    scrollLeft = dragContainer.scrollLeft;
+  });
+
+  dragContainer.addEventListener('mouseleave', () => {
+    isDown = false;
+  });
+
+  dragContainer.addEventListener('mouseup', () => {
+    isDown = false;
+  });
+
+  dragContainer.addEventListener('mousemove', (e) => {
+    if (!isDown) return;
+    e.preventDefault();
+    const x = e.pageX - dragContainer.offsetLeft;
+    const walk = (x - startX); // scroll speed multiplier
+    dragContainer.scrollLeft = scrollLeft - walk;
+  });
+</script>
+
+</body>
 {% endblock %}
