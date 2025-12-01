@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Entries Debug</title>
+    <style>
+        table { border-collapse: collapse; width: 100%; margin-bottom: 2em; }
+        th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
+        th { background: #f0f0f0; }
+    </style>
+</head>
+<body>
+
+    <h1>Entries with Missing/Invalid Rank</h1>
+    <table>
+        <tr><th>Entry Raw Name</th><th>Ranking Raw Name</th><th>Normalized</th><th>Reason</th></tr>
+        {% for item in invalid_rank_entries %}
+        <tr>
+            <td>{{ item.raw }}</td>
+            <td>{{ item.rank_player }}</td>
+            <td>{{ item.norm }}</td>
+            <td>{{ item.reason }}</td>
+        </tr>
+        {% endfor %}
+    </table>
+
+    <h1>Unmatched Entries</h1>
+    <table>
+        <tr><th>Raw Name</th><th>Normalized</th></tr>
+        {% for item in unmatched_entries %}
+        <tr><td>{{ item.raw|join(', ') }}</td><td>{{ item.norm }}</td></tr>
+        {% endfor %}
+    </table>
+
+    <h1>Unmatched Rankings</h1>
+    <table>
+        <tr><th>Raw Name</th><th>Normalized</th></tr>
+        {% for item in unmatched_rankings %}
+        <tr><td>{{ item.raw|join(', ') }}</td><td>{{ item.norm }}</td></tr>
+        {% endfor %}
+    </table>
+
+</body>
+</html>

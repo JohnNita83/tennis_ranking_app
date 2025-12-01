@@ -6,12 +6,19 @@ from datetime import datetime, date, timedelta
 from tournament_fetcher import fetch_tournament_details
 from ranking_fetcher import fetch_category_for_week
 import pandas as pd
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, render_template, request, redirect, url_for, flash, jsonify
 import requests
 from bs4 import BeautifulSoup
 import unicodedata
 import re
 import numpy as np
+from services.entries import load_entries
+from services.rankings import load_rankings
+from services.match import match_entries_to_rankings
+from utils.names import normalize_name
+from services.match import debug_matches
+from rapidfuzz import process
+
 
 COOKIE_FILE = Path(__file__).with_name("cookie.txt")
 
@@ -44,6 +51,9 @@ POINT_COLUMNS = [
 
 app = Flask(__name__)
 app.secret_key = "IWA@1StJohns"
+app.config['TEMPLATES_AUTO_RELOAD'] = True
+app.config['ENV'] = 'development'
+app.config['DEBUG'] = True
 
 @app.route("/health")
 def health():
@@ -465,8 +475,8 @@ def clean_seed(seed) -> str:
     return str(seed).strip()
 
 def sort_entries(df):
-    # Normalize draw column
-    df["draw_lower"] = df["draw"].str.lower()
+    # Normalize Draw column (capital D)
+    df["draw_lower"] = df["Draw"].astype(str).str.lower()
 
     # Assign priority
     df["draw_priority"] = np.select(
@@ -487,18 +497,14 @@ def sort_entries(df):
     df["reserve_num"] = df["draw_lower"].str.extract(r"(\d+)").astype(float)
     df["reserve_num"] = df["reserve_num"].fillna(9999)
 
-    # Custom sort logic:
-    # - maindraw → by rank
-    # - qualification → by rank
-    # - reserve → by reserve_num then text (ignore rank)
-    # - exclude → just priority, no further sort
+    # Custom sort logic
     df_sorted = df.sort_values(
         by=["draw_priority", "reserve_num", "draw_lower", "rank"],
-        ascending=[True, True, True, True],
-        key=lambda col: col if col.name != "rank" else col  # rank only matters for maindraw/qualification
+        ascending=[True, True, True, True]
     )
 
     return df_sorted.drop(columns=["draw_lower", "draw_priority", "reserve_num"])
+
 
 
 def format_display_name(s: str) -> str:
@@ -519,23 +525,14 @@ def format_display_name(s: str) -> str:
     tokens = s.split()
     return " ".join(cap_token(t) for t in tokens if t)
 
-def normalize_name_key(s: str) -> str:
-    if not isinstance(s, str):
-        return ""
-    s = unicodedata.normalize("NFKD", s)
-    s = "".join(ch for ch in s if not unicodedata.combining(ch))
-    # Replace all apostrophe variants with ASCII '
-    for bad in ["’", "‘", "`", "´", "ʼ", "\u2019", "\u2018", "\u02BC"]:
-        s = s.replace(bad, "'")
-    s = s.lower()
-    s = re.sub(r"\s+", " ", s).strip()
-    if "," in s:
-        parts = [p.strip() for p in s.split(",")]
-        if len(parts) == 2:
-            return parts[1] + " " + parts[0]
-    return s
 
-
+if app.config["ENV"] == "development":
+    @app.after_request
+    def add_header(response):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        return response
 @app.route("/")
 def home():
     updated = request.args.get("updated") == "1"
@@ -641,8 +638,6 @@ def rankings():
         updated_at=updated_at,
         q=q,  # pass search term to template
     )
-
-
 
 
 @app.route("/database", methods=["GET", "POST"])
@@ -895,6 +890,109 @@ def delete_tournament(row_id):
     conn.close()
     return redirect(url_for("tournaments", player=player_name, age_group=age_group))
 
+from services.entries import load_entries
+
+@app.route("/entries_debug")
+def entries_debug():
+    try:
+        tournament_id = request.args.get("tournament_id")
+        event_id = request.args.get("event_id", type=int)
+
+        # Fetch the event page
+        url = f"https://ti.tournamentsoftware.com/sport/event.aspx?id={tournament_id}&event={event_id}"
+        headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+
+        # Parse entries table
+        tables = pd.read_html(resp.text)
+        entries_df = tables[1].copy()
+        entries_df = entries_df.rename(columns={"Player": "player"})
+        entries_df["player_norm"] = entries_df["player"].apply(normalize_name)
+
+        # Load rankings
+        rankings_df = load_rankings().copy()
+        rankings_df.columns = [c.strip().lower().replace(" ", "_") for c in rankings_df.columns]
+        rankings_df["player_norm"] = rankings_df["player"].astype(str).apply(normalize_name)
+
+        # Merge entries with rankings on normalized name
+        merged_df = entries_df.merge(rankings_df, on="player_norm", how="left")
+
+        # 1. Unmatched entries
+        unmatched_entries = []
+        for key in set(entries_df["player_norm"]) - set(rankings_df["player_norm"]):
+            raw = entries_df.loc[entries_df["player_norm"] == key, "player"].tolist()
+            unmatched_entries.append({"raw": raw, "norm": key})
+
+        # 2. Unmatched rankings
+        unmatched_rankings = []
+        for key in set(rankings_df["player_norm"]) - set(entries_df["player_norm"]):
+            raw = rankings_df.loc[rankings_df["player_norm"] == key, "player"].tolist()
+            unmatched_rankings.append({"raw": raw, "norm": key})
+
+        # 3. Invalid rank entries (matched but rank is NaN/blank)
+        invalid_rank_entries = []
+        for _, row in merged_df.iterrows():
+            if pd.isna(row.get("rank")) or str(row.get("rank")).strip() == "":
+                invalid_rank_entries.append({
+                    "raw": row.get("player_x", ""),   # entry-side name
+                    "rank_player": row.get("player_y", ""),  # ranking-side name
+                    "norm": row["player_norm"],
+                    "reason": "no valid rank"
+                })
+
+        return render_template(
+            "entries_debug.html",
+            unmatched_entries=unmatched_entries,
+            unmatched_rankings=unmatched_rankings,
+            invalid_rank_entries=invalid_rank_entries
+        )
+
+    except Exception as e:
+        return f"❌ Error: {str(e)}"
+
+
+
+@app.route("/entries")
+def entries_page():
+    tournament_id = request.args.get("tournament_id")
+    event_id = request.args.get("event_id", type=int)
+
+    url = f"https://ti.tournamentsoftware.com/sport/event.aspx?id={tournament_id}&event={event_id}"
+    headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
+    resp = requests.get(url, headers=headers)
+    resp.raise_for_status()
+
+    # --- Load entries via pandas ---
+    tables = pd.read_html(resp.text)
+    entries_df = tables[1]  # adjust index if needed
+    entries_df = entries_df.rename(columns={"Player": "player"})
+    entries_df["player_norm"] = entries_df["player"].apply(normalize_name)
+
+    # Load rankings
+    rankings_df = load_rankings()
+    rankings_df["name_norm"] = rankings_df["name"].apply(normalize_name)
+
+
+
+    # --- Debug mismatches (prints to console/logs) ---
+    debug_matches(entries_df, rankings_df)
+
+    # --- Return something to the browser ---
+    # Option A: render a template
+    return render_template(
+        "entries.html",
+        entries=entries_df.to_dict(orient="records"),
+        rankings=rankings_df.to_dict(orient="records")
+    )
+
+    # Option B: return JSON for quick testing
+    # return jsonify({
+    #     "entries": entries_df.to_dict(orient="records"),
+    #     "rankings": rankings_df.to_dict(orient="records")
+    # })
+
+
 
 @app.route("/import_entries/<tournament_id>", methods=["GET", "POST"])
 def import_entries(tournament_id):
@@ -923,12 +1021,6 @@ def import_entries(tournament_id):
 
         # Normalize column names
         entries_df.columns = [c.strip().lower().replace(" ", "_") for c in entries_df.columns]
-
-        # Normalized key for matching
-        entries_df["player_norm"] = entries_df["player"].apply(normalize_name_key)
-        print("Formatted entries sample (after formatting):\n", entries_df[["player", "player_norm"]].head(10))
-        print("Entries sample:\n", entries_df[["player", "player_norm"]].head(20))
-
         
         # Rankings
         rankings_df = load_rankings().copy()
@@ -938,12 +1030,6 @@ def import_entries(tournament_id):
             rankings_df.rename(columns={"player_name": "player"}, inplace=True)
         if "agegroup" not in rankings_df.columns and "age_group" in rankings_df.columns:
             rankings_df.rename(columns={"age_group": "agegroup"}, inplace=True)
-
-        # Normalize names for matching
-        rankings_df["player_norm"] = rankings_df["player"].apply(normalize_name_key)
-        print("Rankings sample (debug):\n", rankings_df[["player", "player_norm"]].head(50))
-        import sys; sys.stdout.flush()
-        raise RuntimeError("Stopped after rankings debug (temporary)")
 
 
         # Filter latest week
@@ -973,6 +1059,23 @@ def import_entries(tournament_id):
         # Debug merged view
         print("Merged sample:\n", merged_df[["player", "player_norm", "rank"]].head(10))
 
+        # Merge entries with rankings on normalized name
+    merged_df = entries_df.merge(rankings_df, on="player_norm", how="left")
+
+    # Fuzzy match fallback for players with missing rank
+    for idx, row in merged_df.iterrows():
+        if pd.isna(row.get("rank")) or str(row.get("rank")).strip() == "" or row.get("rank") == 999:
+            # Try fuzzy match against rankings
+            match = process.extractOne(row["player_norm"], rankings_df["player_norm"].tolist())
+            if match and match[1] >= 85:  # threshold score
+                candidate = match[0]
+                rank_row = rankings_df[rankings_df["player_norm"] == candidate].iloc[0]
+                # Fill in missing fields from the matched ranking row
+                for col in ["rank", "wtn", "ranking_points", "year_of_birth", "tournaments", "province", "agegroup"]:
+                    if col in rank_row:
+                        merged_df.at[idx, col] = rank_row[col]
+
+
         merged_df = sort_entries(merged_df)
         entries = merged_df.to_dict(orient="records")
 
@@ -987,7 +1090,6 @@ def import_entries(tournament_id):
 
 @app.route("/entries/<tournament_id>")
 def entries(tournament_id):
-    print("HIT /entries (start)")
     event_id = request.args.get("event_id", type=int)
     if not event_id:
         return "Missing event_id", 400
@@ -996,56 +1098,66 @@ def entries(tournament_id):
     headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
     resp = requests.get(url, headers=headers)
 
-    try:
-        tables = pd.read_html(resp.text)
-        print(f"Found {len(tables)} tables")
-        print("Raw entries table sample (before formatting):\n", tables[1].head())
-    except ValueError as e:
-        print("pd.read_html failed:", e)
-        with open("debug.html", "w", encoding="utf-8") as f:
-            f.write(resp.text)
-        return "No tables found in response", 500
-
-    # Use entries table once (do not overwrite later)
+    tables = pd.read_html(resp.text)
     entries_df = tables[1].copy()
-    entries_df.columns = ["draw", "player", "seed"] + [f"col{i}" for i in range(3, len(entries_df.columns))]
-    entries_df["player"] = entries_df["player"].astype(str).apply(format_display_name)
-    entries_df["seed"] = entries_df["seed"].apply(clean_seed)
-    entries_df.columns = [c.strip().lower().replace(" ", "_") for c in entries_df.columns]
 
-    # Optional: normalized key if you want to match here too
-    entries_df["player_norm"] = entries_df["player"].apply(normalize_name_key)
-    print("Formatted entries sample (after formatting):\n", entries_df[["player", "player_norm"]].head(10))
-    print("Entries sample (debug):\n", entries_df[["player", "player_norm"]].head(20))
+    # Fix column names: Unnamed:0 is actually the Draw column
+    entries_df.rename(columns={"Unnamed: 0": "Draw", "Player": "player"}, inplace=True)
 
+    # Normalize player names
+    entries_df["player_norm"] = entries_df["player"].apply(normalize_name)
 
+    # Load rankings
     rankings_df = load_rankings().copy()
     rankings_df.columns = [c.strip().lower().replace(" ", "_") for c in rankings_df.columns]
-    if "player_name" in rankings_df.columns:
-        rankings_df.rename(columns={"player_name": "player"}, inplace=True)
+    rankings_df["player_norm"] = rankings_df["player"].astype(str).apply(normalize_name)
 
+    # Convert rank to numeric
+    rankings_df["rank_num"] = pd.to_numeric(rankings_df["rank"], errors="coerce")
+
+    # Keep only the latest week
     latest_week = rankings_df["week"].max()
     latest_rankings = rankings_df[rankings_df["week"] == latest_week].copy()
 
-    # Simple merge by display name (less reliable) — consider player_norm instead
+    # For each player_norm, keep the lowest rank across all age groups
     best_rankings = (
-        latest_rankings.sort_values("rank", key=lambda x: pd.to_numeric(x, errors="coerce"))
-        .groupby("player", as_index=False)
-        .first()
+        latest_rankings.loc[latest_rankings.groupby("player_norm")["rank_num"].idxmin()]
+        .reset_index(drop=True)
     )
 
-    merged_df = entries_df.merge(best_rankings, on="player", how="left")
+    # Drop duplicate player column before merge
+    best_rankings = best_rankings.drop(columns=["player"])
+
+    # Merge on player_norm only
+    merged_df = entries_df.merge(best_rankings, on="player_norm", how="left")
+
+    # Fill missing ranks with 999
     merged_df["rank"] = pd.to_numeric(merged_df["rank"], errors="coerce").fillna(999).astype(int)
-    if "agegroup" in merged_df.columns:
-        merged_df["agegroup"] = merged_df["agegroup"].fillna("N/A")
-    for col in ["wtn", "ranking_points", "year_of_birth", "tournaments", "province"]:
+
+    # Debug check
+    print("Merged columns:", merged_df.columns.tolist())
+    print(merged_df.head())
+
+    # Clean Seed column: replace NaN with empty string
+    merged_df["Seed"] = merged_df["Seed"].fillna("")
+
+    # Replace NaN in all other ranking columns with "N/A"
+    ranking_cols = [
+        "member_id", "year_of_birth", "wtn", "ranking_points", "total_points",
+        "tournaments", "avg_points", "province", "agegroup", "week", "updatedat"
+    ]
+    for col in ranking_cols:
         if col in merged_df.columns:
             merged_df[col] = merged_df[col].fillna("N/A")
 
+    # ✅ Apply your custom sort
     merged_df = sort_entries(merged_df)
-    entries = merged_df.to_dict(orient="records")
 
+
+    entries = merged_df.to_dict(orient="records")
     return render_template("entries.html", tournament_id=tournament_id, event_id=event_id, entries=entries)
+
+
 
     
 @app.route("/player")
@@ -1071,6 +1183,10 @@ def player():
 
     return render_template("player.html", name=name, rows=rows, age_groups=AGE_GROUPS)
 
+# Add this near the bottom of app.py, before app.run
+print("Registered routes:")
+for rule in app.url_map.iter_rules():
+    print(rule)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<h2>Entries for Tournament {{ tournament_id }}</h2>
+<h2 style="padding:30px 0;">Entries for Tournament {{ tournament_name }}</h2>
 
 <div class="table-responsive" style="overflow-x: auto; white-space: nowrap;">
   <table class="table table-sm table-striped align-middle">
@@ -22,9 +22,9 @@
       {% for entry in entries %}
       <tr>
         <td>{{ loop.index }}</td>
-        <td>{{ entry.draw }}</td>
+        <td>{{ entry.Draw }}</td>
         <td>{{ entry.player }}</td>
-        <td>{{ entry.seed }}</td>
+        <td>{{ entry.Seed }}</td>
         <td>{{ entry.rank }}</td>
         <td>{{ entry.agegroup }}</td>
         <td>{{ entry.wtn }}</td>

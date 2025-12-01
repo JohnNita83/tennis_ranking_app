@@ -169,7 +169,7 @@
               <th>↑↓</th>
               <th>Won</th>
               <th>Lost</th>
-              <th>Matches</th>
+              <th>Mts</th>
               <th>Event</th>
               <th>Link</th>
             </tr>
@@ -204,7 +204,7 @@
                        value="{{ name }}"
                        class="form-control form-control-sm"
                        size="{{ ch_len }}"
-                       style="min-width: 25ch; max-width: 60ch; width: auto; padding-right:0px;">
+                       style="min-width: 25ch; max-width: 48ch; width: auto; padding-right:0px;">
               </td>
 
               <td style= "font-size: .875rem;">
@@ -293,16 +293,17 @@
               >
                 {{ r.matches }}
               </td>
-              <td>
+              <td style= "font-size: .875rem;">
                 {% if not r.is_international %}
-                  <input type="number" name="event_{{ r.id }}" value="{{ r.event_id or '' }}">
+                  <input type="number" name="event_{{ r.id }}" value="{{ r.event_id or '' }}"
+                         style="width:auto; max-width:40px;">
                 {% else %}
                   -
                 {% endif %}
               </td>
-              <td>
+              <td style= "font-size: 1.5rem; text-align: center;">
                 {% if r.event_id %}
-                  <a href="{{ url_for('entries', tournament_id=r.tournament_id, event_id=r.event_id) }}">Get entries</a>
+                  <a href="{{ url_for('entries', tournament_id=r.tournament_id, event_id=r.event_id) }}" style="text-decoration: none; color: green;">⇲</a>
                 {% endif %}
               </td>
 
