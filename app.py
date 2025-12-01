@@ -270,8 +270,10 @@ def load_rankings():
 
 
 def get_week_label_for_date(d: date) -> str:
-    iso_year, iso_week, _ = d.isocalendar()
-    return f"{iso_week}-{iso_year}"
+    # ISO week number
+    week_num = d.isocalendar()[1]
+    year = d.isocalendar()[0]
+    return f"{week_num}-{year}"
 
 
 def build_tournament_view(player_name: str, age_group: str) -> dict:
@@ -344,8 +346,12 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
                 next_week_date = d + timedelta(days=7)
                 wk_label = get_week_label_for_date(next_week_date)
                 rank_value = rankings_map.get(wk_label)
-            except Exception:
+            except Exception as e:
+                print("Ranking lookup failed:", e)
                 rank_value = None
+
+        print("End date:", end_date, "Next week:", next_week_date, "Label:", wk_label)
+
 
         # +/- diff vs previous
         diff = None
@@ -367,6 +373,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
             "no": idx,
             "start_date": start_date,
             "end_date": end_date,
+            "wk_label": wk_label,
             "tournament_name": r["tournament_name"],
             "cat_code": cat_code,
             "opens_date": r["opens_date"],
@@ -384,6 +391,14 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
             "is_international": r["is_international"],
             "event_id": r["event_id"],
         })
+
+    # Mark top 6 points
+    all_points = [r["points"] for r in rows if r["points"] is not None]
+    top6_points = sorted(all_points, reverse=True)[:6]
+
+    for r in rows:
+        r["is_top6"] = r["points"] in top6_points
+
 
     total_matches = total_won + total_lost
     won_pct = (total_won / total_matches * 100) if total_matches > 0 else 0
