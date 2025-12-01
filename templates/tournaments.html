@@ -1,5 +1,17 @@
 {% extends "base.html" %}
 {% block content %}
+<head>
+  <style>
+    .table-drag-container {
+      overflow-x: auto;
+      cursor: grab;
+    }
+    .table-drag-container:active {
+      cursor: grabbing;
+    }
+  </style>
+</head>
+<body>
 <div class="card shadow-sm mb-3">
   <div class="card-body">
     <h5 class="card-title mb-3">Tournaments – {{ player_name }} ({{ age_group }})</h5>
@@ -182,7 +194,7 @@
 
       <h3>{{ player_name }} – {{ age_group }}</h3>
 
-      <div class="table-responsive" style="overflow-x: auto; white-space: nowrap;">
+      <div class="table-responsive table-drag-container" style="overflow-x: auto; white-space: nowrap;">
         <table class="table table-sm table-striped align-middle">
           <thead class="table-light">
             <tr>
@@ -355,4 +367,35 @@
     </div>
   </div>
 </form>
+<script>
+  const dragContainer = document.querySelector('.table-drag-container');
+
+  let isDown = false;
+  let startX;
+  let scrollLeft;
+
+  dragContainer.addEventListener('mousedown', (e) => {
+    isDown = true;
+    startX = e.pageX - dragContainer.offsetLeft;
+    scrollLeft = dragContainer.scrollLeft;
+  });
+
+  dragContainer.addEventListener('mouseleave', () => {
+    isDown = false;
+  });
+
+  dragContainer.addEventListener('mouseup', () => {
+    isDown = false;
+  });
+
+  dragContainer.addEventListener('mousemove', (e) => {
+    if (!isDown) return;
+    e.preventDefault();
+    const x = e.pageX - dragContainer.offsetLeft;
+    const walk = (x - startX); // scroll speed multiplier
+    dragContainer.scrollLeft = scrollLeft - walk;
+  });
+</script>
+
+</body>
 {% endblock %}

@@ -1139,13 +1139,33 @@ def entries(tournament_id):
     # Convert rank to numeric
     rankings_df["rank_num"] = pd.to_numeric(rankings_df["rank"], errors="coerce")
 
-    # Keep only the latest week
-    latest_week = rankings_df["week"].max()
-    latest_rankings = rankings_df[rankings_df["week"] == latest_week].copy()
+    # ✅ Decide which week to use based on close_date
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT close_date FROM tournaments WHERE tournament_id = ?", (tournament_id,))
+    row = cur.fetchone()
+    conn.close()
+    close_date = row["close_date"] if row else None
+
+    today = datetime.utcnow().date()
+    if close_date:
+        close_date_obj = datetime.fromisoformat(close_date).date()
+        if today < close_date_obj:
+            # Use latest week
+            target_week = rankings_df["week"].max()
+        else:
+            # Use the week of the close date
+            week_num = close_date_obj.isocalendar()[1]
+            year = close_date_obj.isocalendar()[0]
+            target_week = f"{week_num}-{year}"
+    else:
+        target_week = rankings_df["week"].max()
+
+    selected_rankings = rankings_df[rankings_df["week"] == target_week].copy()
 
     # For each player_norm, keep the lowest rank across all age groups
     best_rankings = (
-        latest_rankings.loc[latest_rankings.groupby("player_norm")["rank_num"].idxmin()]
+        selected_rankings.loc[selected_rankings.groupby("player_norm")["rank_num"].idxmin()]
         .reset_index(drop=True)
     )
 
@@ -1177,10 +1197,8 @@ def entries(tournament_id):
     # ✅ Apply your custom sort
     merged_df = sort_entries(merged_df)
 
-
     entries = merged_df.to_dict(orient="records")
     return render_template("entries.html", tournament_id=tournament_id, event_id=event_id, entries=entries)
-
 
 
     
