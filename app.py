@@ -520,18 +520,28 @@ def extract_entries(html):
     return largest.to_dict(orient="records")
 
 # --- Cleaning helpers ---
-def clean_player_name(name: str) -> str:
-    if not isinstance(name, str):
-        return name
-    # Remove country code like [IRL] only if present
-    return re.sub(r"^\[[A-Z]{3}\]\s*", "", name.strip())
 
 def clean_seed(seed) -> str:
     if pd.isna(seed):   # catches NaN
         return ""
     return str(seed).strip()
 
+def clean_player_name(name: str) -> str:
+    if not isinstance(name, str):
+        return name
+    return re.sub(r"^\[[A-Z]{3}\]\s*", "", name.strip())
+
+
 def sort_entries(df):
+    # Clean player names: remove [XXX] country codes if present
+    df["player"] = df["player"].astype(str).str.strip()
+    df["player"] = df["player"].apply(
+        lambda name: re.sub(r"^\[[A-Z]{3}\]\s*", "", name)
+    )
+
+    # Normalize player names for matching
+    df["player_norm"] = df["player"].str.lower().str.strip()
+
     # Normalize Draw column (capital D)
     df["draw_lower"] = df["Draw"].astype(str).str.lower()
 
@@ -561,7 +571,6 @@ def sort_entries(df):
     )
 
     return df_sorted.drop(columns=["draw_lower", "draw_priority", "reserve_num"])
-
 
 
 def format_display_name(s: str) -> str:
@@ -1080,6 +1089,12 @@ def import_entries(tournament_id):
         entries_df["player"] = entries_df["player"].astype(str).apply(format_display_name)
         entries_df["seed"] = entries_df["seed"].apply(clean_seed)
 
+        # Clean player names
+        entries_df["player"] = entries_df["player"].astype(str).apply(clean_player_name)
+
+        # Normalize player names for matching
+        entries_df["player_norm"] = entries_df["player"].str.lower().str.strip()
+
         # Normalize column names
         entries_df.columns = [c.strip().lower().replace(" ", "_") for c in entries_df.columns]
         
@@ -1165,8 +1180,11 @@ def entries(tournament_id):
     # Fix column names: Unnamed:0 is actually the Draw column
     entries_df.rename(columns={"Unnamed: 0": "Draw", "Player": "player"}, inplace=True)
 
+    # Clean player names
+    entries_df["player"] = entries_df["player"].astype(str).apply(clean_player_name)
+
     # Normalize player names
-    entries_df["player_norm"] = entries_df["player"].apply(normalize_name)
+    entries_df["player_norm"] = entries_df["player"].str.lower().str.strip()
 
     # Load rankings
     rankings_df = load_rankings().copy()
