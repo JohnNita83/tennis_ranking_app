@@ -18,6 +18,9 @@ from services.match import match_entries_to_rankings
 from utils.names import normalize_name
 from services.match import debug_matches
 from rapidfuzz import process
+import plotly.graph_objs as go
+import plotly.utils
+import json
 
 
 COOKIE_FILE = Path(__file__).with_name("cookie.txt")
@@ -232,6 +235,35 @@ def load_points_map():
     return result
 
 
+def load_player_weekly_ranks(player_name: str, age_group: str):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT week, rank FROM rankings WHERE player = ? AND agegroup = ?",
+        (player_name, age_group)
+    )
+    rows = cur.fetchall()
+    conn.close()
+
+    # Normalize and sort by year/week extracted from "WEEK-YEAR"
+    def parse_week(w):
+        try:
+            w_str = str(w)
+            wk, yr = w_str.split("-")
+            return int(yr), int(wk)
+        except Exception:
+            return (0, 0)
+
+    rows_sorted = sorted(rows, key=lambda r: parse_week(r["week"]))
+    weeks = [r["week"] for r in rows_sorted]
+    ranks = [int(r["rank"]) for r in rows_sorted if r["rank"] is not None]
+
+    # Match lengths (skip rows without rank)
+    weeks = [r["week"] for r in rows_sorted if r["rank"] is not None]
+
+    return weeks, ranks
+
+
 def load_player_rankings(player_name: str, age_group: str) -> dict:
     """
     Return {week_label: rank_int} for given player + age_group from rankings DB.
@@ -277,9 +309,6 @@ def get_week_label_for_date(d: date) -> str:
 
 
 def build_tournament_view(player_name: str, age_group: str) -> dict:
-    """
-    Load tournaments for player, compute derived columns.
-    """
     ensure_tournaments_table()
     points_map = load_points_map()
     rankings_map = load_player_rankings(player_name, age_group)
@@ -306,7 +335,11 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
     total_won = 0
     total_lost = 0
     cat_counts = {code: 0 for code, _disp in POINT_COLUMNS}
-    cat_points = {code: 0 for code, _disp in POINT_COLUMNS}   # 👈 new dict
+    cat_points = {code: 0 for code, _disp in POINT_COLUMNS}
+
+    # initialise so they always exist
+    max_ranking_points = None
+    top6_tournaments = []
 
     for idx, r in enumerate(db_rows, start=1):
         row_id = r["id"]
@@ -323,37 +356,31 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         if cat_code in cat_counts:
             cat_counts[cat_code] += 1
 
-        # Points from points_map
         pts = None
         if place is not None and cat_code and place in points_map:
             pts = points_map[place].get(cat_code)
 
-        # 👇 accumulate points per category
         if pts is not None and cat_code in cat_points:
             cat_points[cat_code] += pts
 
         points_list.append(pts if pts is not None else 0)
 
-        # RankingPoints = sum of top 6 points from rows up to this one
         top6 = sorted(points_list, reverse=True)[:6]
         ranking_points = sum(top6)
 
-        # Rank lookup logic (unchanged)
         rank_value = None
+        wk_label = None
+        next_week_date = None
+
         if end_date:
             try:
                 d = datetime.fromisoformat(end_date).date()
                 next_week_date = d + timedelta(days=7)
                 wk_label = get_week_label_for_date(next_week_date)
                 rank_value = rankings_map.get(wk_label)
-            except Exception as e:
-                print("Ranking lookup failed:", e)
+            except Exception:
                 rank_value = None
 
-        print("End date:", end_date, "Next week:", next_week_date, "Label:", wk_label)
-
-
-        # +/- diff vs previous
         diff = None
         arrow = None
         if rank_value is not None and prev_rank is not None:
@@ -392,26 +419,21 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
             "event_id": r["event_id"],
         })
 
-        # Mark top 6 points by position, not value
-        scored_rows = [(idx, r["points"]) for idx, r in enumerate(rows) if r["points"] is not None]
-        scored_rows.sort(key=lambda x: x[1], reverse=True)
-
-        # Take exactly the first 6 indices
-        top6_indices = {idx for idx, pts in scored_rows[:6]}
-
-        # Mark rows
-        for idx, r in enumerate(rows):
-            r["is_top6"] = idx in top6_indices
-
-        # Mark max ranking points
+    # 👉 after loop, compute max and top6 safely
+    if rows:
         max_ranking_points = max(
             (r["ranking_points"] for r in rows if r["ranking_points"] is not None),
             default=None
         )
-
         for r in rows:
             r["is_best_ranking_points"] = (r["ranking_points"] == max_ranking_points)
 
+        scored_rows = [(idx, r["points"]) for idx, r in enumerate(rows) if r["points"] is not None]
+        scored_rows.sort(key=lambda x: x[1], reverse=True)
+        top6_indices = {idx for idx, pts in scored_rows[:6]}
+        for idx, r in enumerate(rows):
+            r["is_top6"] = idx in top6_indices
+        top6_tournaments = [rows[idx] for idx, pts in scored_rows[:6]]
 
     total_matches = total_won + total_lost
     won_pct = (total_won / total_matches * 100) if total_matches > 0 else 0
@@ -427,7 +449,9 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
             "lost_pct": lost_pct,
         },
         "cat_counts": cat_counts,
-        "cat_points": cat_points,   # 👈 now returned
+        "cat_points": cat_points,
+        "max_ranking_points": max_ranking_points,
+        "top6_tournaments": top6_tournaments
     }
 
 
@@ -1230,7 +1254,9 @@ def entries(tournament_id):
     
 @app.route("/player")
 def player():
-    name = request.args.get("name", "").strip()
+    name = request.args.get("name", "Kevin Nita").strip()
+    age_group = request.args.get("age_group", "BS14")  # selected age group from query string
+
     if not name:
         # simple form on the same page
         return render_template("player.html", name=None, rows=[], age_groups=AGE_GROUPS)
@@ -1249,7 +1275,119 @@ def player():
     rows = cur.fetchall()
     conn.close()
 
-    return render_template("player.html", name=name, rows=rows, age_groups=AGE_GROUPS)
+    # --- Build weekly series for the selected age group ---
+    weeks = []
+    ranks = []
+    if age_group:
+        for r in rows:
+            if r["AgeGroup"] == age_group and r["Rank"] is not None:
+                weeks.append(r["Week"])
+                ranks.append(int(r["Rank"]))
+
+    plot_json = None
+    if weeks and ranks:
+        fig = go.Figure(
+        data=[
+            go.Scatter(
+                x=weeks,
+                y=ranks,
+                mode="lines+markers+text",   # include text labels
+                line=dict(color="green", width=3),
+                marker=dict(size=8),
+                text=ranks,                  # show rank numbers
+                textposition="top center"    # place labels above markers
+            )
+        ],
+        layout=go.Layout(
+            title=f"Ranking progress for {name} ({age_group})",
+            xaxis=dict(title="Week", tickangle=-45),
+            yaxis=dict(title="Rank", autorange="reversed"),  # rank #1 at top
+            margin=dict(l=40, r=20, t=50, b=80),
+            height=400
+        )
+    )
+
+        plot_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+
+
+    # Call your tournament helper
+    tournament_data = build_tournament_view(name, age_group)
+    # Debug: print top 6 tournaments and their points
+    print(f"\n=== Top 6 tournaments for {name} ({age_group}) ===")
+    for r in tournament_data["top6_tournaments"]:
+        print(f"{r['tournament_name']} → {r['points']}")
+
+
+    # Extract top 6 tournaments for bar chart
+    bar_plot_json = None
+    if tournament_data["top6_tournaments"]:   # only build chart if list is non-empty
+        names = [r["tournament_name"] for r in tournament_data["top6_tournaments"]]
+        points = [r["points"] for r in tournament_data["top6_tournaments"]]
+
+        bar_fig = go.Figure(
+            data=[go.Bar(
+                x=points,
+                y=list(range(1, len(points)+1)),
+                orientation="h",
+                marker=dict(color="green"),
+                text=names,                 # show points
+                textposition="inside"       # place labels at end of bar
+            )],
+            layout=go.Layout(
+                title=f"Top 6 Tournaments by Points ({age_group})",
+                xaxis=dict(title="Points",),
+                yaxis=dict(title="Tournaments"),
+                margin=dict(l=40, r=20, t=50, b=80),
+                height=400
+            )
+        )
+
+        bar_plot_json = json.dumps(bar_fig, cls=plotly.utils.PlotlyJSONEncoder)
+
+    # Category totals chart
+    cat_bar_plot_json = None
+    if tournament_data["cat_points"]:
+        # Filter out categories with 0 points
+        filtered = {c: p for c, p in tournament_data["cat_points"].items() if p > 0}
+
+        # Sort by points descending
+        sorted_cats = sorted(filtered.items(), key=lambda x: x[1], reverse=True)
+
+        categories = [c for c, _ in sorted_cats]
+        totals = [p for _, p in sorted_cats]
+
+        cat_fig = go.Figure(
+        data=[go.Bar(
+            y=categories,
+            x=totals,
+            orientation="h",
+            marker=dict(color="green"),   # ✅ green bars
+            text=totals,                  # ✅ show points
+            textposition="inside"        # ✅ place labels at end of bar
+        )],
+        layout=go.Layout(
+            title=f"Total Points by Category ({age_group})",
+            xaxis=dict(title="Total Points"),
+            yaxis=dict(title="Category", autorange="reversed"),  # largest at top
+            margin=dict(l=40, r=20, t=50, b=80),
+            height=400
+        )
+    )
+        cat_bar_plot_json = json.dumps(cat_fig, cls=plotly.utils.PlotlyJSONEncoder)
+
+
+    return render_template(
+        "player.html",
+        name=name,
+        age_group=age_group,
+        age_groups=AGE_GROUPS,
+        rows=rows,
+        plot_json=plot_json,          
+        bar_plot_json=bar_plot_json,
+        cat_bar_plot_json=cat_bar_plot_json
+    )
+
+
 
 # Add this near the bottom of app.py, before app.run
 print("Registered routes:")

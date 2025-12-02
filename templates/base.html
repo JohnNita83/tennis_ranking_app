@@ -16,7 +16,7 @@
   <body class="bg-light">
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-3">
       <div class="container-fluid">
-        <a class="navbar-brand" href="{{ url_for('home') }}">Tennis Rankings</a>
+        <a class="navbar-brand" href="{{ url_for('home') }}">TI PLAYER APP</a>
         <button
           class="navbar-toggler"
           type="button"
@@ -37,7 +37,7 @@
               <a class="nav-link" href="{{ url_for('rankings') }}">Rankings</a>
             </li>
             <li class="nav-item">
-              <a class="nav-link" href="{{ url_for('player') }}">Player History</a>
+              <a class="nav-link" href="{{ url_for('player') }}">Player Profile</a>
             </li>
             <li class="nav-item">
               <a class="nav-link" href="{{ url_for('database_admin') }}">Database</a>
@@ -142,5 +142,6 @@
     </main>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
   </body>
 </html>
