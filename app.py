@@ -403,6 +403,14 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         for idx, r in enumerate(rows):
             r["is_top6"] = idx in top6_indices
 
+        # Mark max ranking points
+        max_ranking_points = max(
+            (r["ranking_points"] for r in rows if r["ranking_points"] is not None),
+            default=None
+        )
+
+        for r in rows:
+            r["is_best_ranking_points"] = (r["ranking_points"] == max_ranking_points)
 
 
     total_matches = total_won + total_lost
@@ -1144,13 +1152,18 @@ def entries(tournament_id):
     # Convert rank to numeric
     rankings_df["rank_num"] = pd.to_numeric(rankings_df["rank"], errors="coerce")
 
-    # ✅ Decide which week to use based on close_date
+    # ✅ Decide which week to use based on close_date and also fetch tournament_name
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT close_date FROM tournaments WHERE tournament_id = ?", (tournament_id,))
+    cur.execute(
+        "SELECT close_date, tournament_name FROM tournaments WHERE tournament_id = ?",
+        (tournament_id,)
+    )
     row = cur.fetchone()
     conn.close()
+
     close_date = row["close_date"] if row else None
+    tournament_name = row["tournament_name"] if row else ""
 
     today = datetime.utcnow().date()
     if close_date:
@@ -1175,7 +1188,8 @@ def entries(tournament_id):
     )
 
     # Drop duplicate player column before merge
-    best_rankings = best_rankings.drop(columns=["player"])
+    if "player" in best_rankings.columns:
+        best_rankings = best_rankings.drop(columns=["player"])
 
     # Merge on player_norm only
     merged_df = entries_df.merge(best_rankings, on="player_norm", how="left")
@@ -1188,7 +1202,8 @@ def entries(tournament_id):
     print(merged_df.head())
 
     # Clean Seed column: replace NaN with empty string
-    merged_df["Seed"] = merged_df["Seed"].fillna("")
+    if "Seed" in merged_df.columns:
+        merged_df["Seed"] = merged_df["Seed"].fillna("")
 
     # Replace NaN in all other ranking columns with "N/A"
     ranking_cols = [
@@ -1203,8 +1218,14 @@ def entries(tournament_id):
     merged_df = sort_entries(merged_df)
 
     entries = merged_df.to_dict(orient="records")
-    return render_template("entries.html", tournament_id=tournament_id, event_id=event_id, entries=entries)
 
+    return render_template(
+        "entries.html",
+        tournament_id=tournament_id,
+        event_id=event_id,
+        entries=entries,
+        tournament_name=tournament_name
+    )
 
     
 @app.route("/player")

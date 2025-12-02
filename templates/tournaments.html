@@ -84,9 +84,9 @@
           <table class="table table-sm table-bordered mb-0 text-center align-middle">
             <thead class="table-light">
               <tr>
-                <th class="fw-bold">Won</th>
-                <th class="fw-bold">Lost</th>
-                <th class="fw-bold">Matches</th>
+                <th>Won</th>
+                <th>Lost</th>
+                <th>Matches</th>
               </tr>
             </thead>
             <tbody>
@@ -130,7 +130,7 @@
           <tbody>
             <!-- No. row -->
             <tr>
-              <td>No.</td>
+              <td style="font-weight: bold;">Qty</td>
               {% set ns = namespace(total=0) %}
               {% for col_code, display_name in point_columns %}
                 {% set count = cat_counts[col_code] %}
@@ -142,7 +142,7 @@
 
             <!-- Pts row -->
             <tr>
-              <td>Pts</td>
+              <td style="font-weight: bold;">Pts</td>
               {% set ns = namespace(total=0) %}
               {% for col_code, display_name in point_columns %}
                 {% set pts = cat_points[col_code] %}
@@ -154,7 +154,7 @@
 
             <!-- Avg row -->
             <tr>
-              <td>Avg</td>
+              <td style="font-weight: bold;">Avg</td>
               {% set ns = namespace(total_points=0, total_counts=0) %}
               {% for col_code, display_name in point_columns %}
                 {% set pts = cat_points[col_code] %}
@@ -296,7 +296,9 @@
               </td>
 
               <!-- Ranking points column (no highlight) -->
-              <td style="font-size: .875rem; text-align: center;">{{ r.ranking_points }}</td>
+              <td class="{% if r.is_best_ranking_points %}fw-bold text-success{% endif %}" style="font-size: .875rem; text-align: center;">
+                {{ r.ranking_points }}
+              </td>
 
               <td class="{% if r.rank == min_rank %}fw-bold text-success{% endif %}" style="font-size: .875rem; text-align: center;">
                 {{ r.rank if r.rank is not none else "" }}

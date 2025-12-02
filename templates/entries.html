@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
-<h2 style="padding:30px 0;">Entries for Tournament {{ tournament_name }}</h2>
+<h2 style="padding-top:30px;">Entries for Tournament</h2>
+<h2 style="padding-bottom:30px;"" class="fw-bold text-success">{{ tournament_name }}</h2>
 
 <div class="table-responsive" style="overflow-x: auto; white-space: nowrap;">
   <table class="table table-sm table-striped align-middle">
@@ -22,7 +23,19 @@
       {% for entry in entries %}
       <tr>
         <td>{{ loop.index }}</td>
-        <td>{{ entry.Draw }}</td>
+        <td
+          {% if "Maindraw" in entry.Draw %}
+            style="color: rgb(29, 173, 29);"
+          {% elif "Qualification" in entry.Draw %}
+            style="color: rgb(246, 199, 82);"   {# dark yellow #}
+          {% elif "Reserve" in entry.Draw %}
+            style="color: rgb(218, 127, 9);"
+          {% elif "Exclude" in entry.Draw %}
+            style="color: red;"
+          {% endif %}
+        >
+          {{ entry.Draw }}
+        </td>
         <td>{{ entry.player }}</td>
         <td>{{ entry.Seed }}</td>
         <td>{{ entry.rank }}</td>
