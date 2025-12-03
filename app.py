@@ -1,6 +1,7 @@
 import sqlite3
 from update_current_week import update_current_week as run_update
 from flask import Flask, render_template, request, redirect, url_for
+from flask_login import LoginManager, UserMixin, LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from pathlib import Path
 from datetime import datetime, date, timedelta
 from tournament_fetcher import fetch_tournament_details
@@ -57,6 +58,59 @@ app.secret_key = "IWA@1StJohns"
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.config['ENV'] = 'development'
 app.config['DEBUG'] = True
+
+# Step 1: initialize login manager
+login_manager = LoginManager()
+login_manager.init_app(app)
+login_manager.login_view = "login"  # redirect to /login if not authenticated
+
+# Step 2: define users in backend (hardcoded or from DB)
+class User(UserMixin):
+    def __init__(self, id, username, password):
+        self.id = id
+        self.username = username
+        self.password = password
+
+# Example: backend-defined users (no registration, only added manually)
+USERS = {
+    "admin": User(id=1, username="admin", password="1830503100164"),
+}
+
+@login_manager.user_loader
+def load_user(user_id):
+    for user in USERS.values():
+        if str(user.id) == str(user_id):
+            return user
+    return None
+
+# Step 3: Global protection hook
+@app.before_request
+def require_login():
+    # allow login/logout and static files without authentication
+    if request.endpoint in ("login", "logout", "static"):
+        return
+    if not current_user.is_authenticated:
+        return redirect(url_for("login"))
+
+# Step 4: login/logout routes
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if request.method == "POST":
+        username = request.form["username"]
+        password = request.form["password"]
+        user = USERS.get(username)
+        if user and user.password == password:
+            login_user(user)
+            return redirect(url_for("rankings"))  # or homepage
+        else:
+            return "Invalid credentials", 401
+    return render_template("login.html")
+
+@app.route("/logout")
+@login_required
+def logout():
+    logout_user()
+    return redirect(url_for("login"))
 
 @app.route("/health")
 def health():
