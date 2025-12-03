@@ -633,17 +633,37 @@ def rankings():
     if age_group not in AGE_GROUPS:
         age_group = "BS14"
 
-    if not week:
-        week = get_latest_week_for_age_group(age_group)
-
     rows = []
     updated_at = None
+
+    # weeks dropdown
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "SELECT DISTINCT Week FROM rankings WHERE AgeGroup = ?",
+        (age_group,),
+    )
+    weeks = [r["Week"] for r in cur.fetchall()]
+    conn.close()
+
+    # ✅ Sort weeks numerically by (year, week number), descending
+    def parse_week(w):
+        try:
+            week_num, year = w.split("-")
+            return (int(year), int(week_num))
+        except Exception:
+            return (0, 0)
+
+    weeks = sorted(weeks, key=parse_week, reverse=True)
+
+    # ✅ If no week is provided, pick the latest one
+    if not week and weeks:
+        week = weeks[0]
 
     if week:
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # main rows, with optional search filter
         if q:
             cur.execute(
                 """
@@ -666,7 +686,6 @@ def rankings():
             )
         rows = cur.fetchall()
 
-        # get latest UpdatedAt for this week+age_group
         try:
             cur.execute(
                 """
@@ -684,16 +703,6 @@ def rankings():
 
         conn.close()
 
-    # weeks dropdown
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT DISTINCT Week FROM rankings WHERE AgeGroup = ? ORDER BY Week",
-        (age_group,),
-    )
-    weeks = [r["Week"] for r in cur.fetchall()]
-    conn.close()
-
     return render_template(
         "rankings.html",
         age_group=age_group,
@@ -702,7 +711,7 @@ def rankings():
         rows=rows,
         age_groups=AGE_GROUPS,
         updated_at=updated_at,
-        q=q,  # pass search term to template
+        q=q,
     )
 
 
@@ -1302,30 +1311,44 @@ def player():
                 weeks.append(r["Week"])
                 ranks.append(int(r["Rank"]))
 
+    # ✅ Sort weeks ascending by (year, week number)
+    def parse_week(w):
+        try:
+            week_num, year = w.split("-")
+            return (int(year), int(week_num))
+        except Exception:
+            return (9999, 9999)  # fallback for malformed strings
+
+    if weeks and ranks:
+        # zip weeks and ranks together, sort by parsed week, then unzip
+        sorted_pairs = sorted(zip(weeks, ranks), key=lambda x: parse_week(x[0]))
+        weeks, ranks = zip(*sorted_pairs)
+
     plot_json = None
     if weeks and ranks:
         fig = go.Figure(
-        data=[
-            go.Scatter(
-                x=weeks,
-                y=ranks,
-                mode="lines+markers+text",   # include text labels
-                line=dict(color="green", width=3),
-                marker=dict(size=8),
-                text=ranks,                  # show rank numbers
-                textposition="top center"    # place labels above markers
+            data=[
+                go.Scatter(
+                    x=weeks,
+                    y=ranks,
+                    mode="lines+markers+text",   # include text labels
+                    line=dict(color="green", width=3),
+                    marker=dict(size=8),
+                    text=ranks,                  # show rank numbers
+                    textposition="top center"    # place labels above markers
+                )
+            ],
+            layout=go.Layout(
+                title=f"Ranking progress for {name} ({age_group})",
+                xaxis=dict(title="Week", tickangle=-45),
+                yaxis=dict(title="Rank", autorange="reversed"),  # rank #1 at top
+                margin=dict(l=40, r=20, t=50, b=80),
+                height=400
             )
-        ],
-        layout=go.Layout(
-            title=f"Ranking progress for {name} ({age_group})",
-            xaxis=dict(title="Week", tickangle=-45),
-            yaxis=dict(title="Rank", autorange="reversed"),  # rank #1 at top
-            margin=dict(l=40, r=20, t=50, b=80),
-            height=400
         )
-    )
 
         plot_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
+
 
 
     # Call your tournament helper
