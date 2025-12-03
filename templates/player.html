@@ -100,29 +100,30 @@
             </tr>
           </thead>
           <tbody>
-            {% for cat, data in category_summary.items() %}
-            <tr>
-              <td class="fw-bold">{{ cat }}</td>
-              <td>{{ data.tournaments }}</td>
-              <td>{{ data.total_points }}</td>
-              <td>{{ cat_ranking_points.get(cat, 0) or "" }}</td>
-              <td>{{ data.best_place if data.best_place else "" }}</td>
-              <td>{{ data.won }}</td>
-              <td>{{ data.lost }}</td>
-              <td>{{ data.total }}</td>
-            </tr>
-            {% endfor %}
-            <tr class="table-secondary fw-bold">
-              <td>Grand Total</td>
-              <td>{{ grand_total.tournaments }}</td>
-              <td>{{ grand_total.total_points }}</td>
-              <td>{{ cat_ranking_points.values()|sum }}</td>
-              <td>{{ grand_total.best_place if grand_total.best_place else "" }}</td>
-              <td>{{ grand_total.won }}</td>
-              <td>{{ grand_total.lost }}</td>
-              <td>{{ grand_total.total }}</td>
-            </tr>
-          </tbody>
+          {% for cat, data in category_summary.items() %}
+          <tr>
+            <td class="fw-bold">{{ cat }}</td>
+            <td>{{ "&mdash;"|safe if data.tournaments == 0 else data.tournaments }}</td>
+            <td>{{ "&mdash;"|safe if data.total_points == 0 else data.total_points }}</td>
+            <td>{{ "&mdash;"|safe if cat_ranking_points.get(cat, 0) == 0 else cat_ranking_points.get(cat, 0) }}</td>
+            <td>{{ data.best_place if data.best_place else "&mdash;"|safe }}</td>
+            <td>{{ "&mdash;"|safe if data.won == 0 else data.won }}</td>
+            <td>{{ "&mdash;"|safe if data.lost == 0 else data.lost }}</td>
+            <td>{{ "&mdash;"|safe if data.total == 0 else data.total }}</td>
+          </tr>
+          {% endfor %}
+          <tr class="table-secondary fw-bold">
+            <td>Grand Total</td>
+            <td>{{ grand_total.tournaments }}</td>
+            <td>{{ grand_total.total_points }}</td>
+            <td>{{ cat_ranking_points.values()|sum }}</td>
+            <td>{{ grand_total.best_place if grand_total.best_place else "&mdash;"|safe }}</td>
+            <td>{{ grand_total.won }}</td>
+            <td>{{ grand_total.lost }}</td>
+            <td>{{ grand_total.total }}</td>
+          </tr>
+        </tbody>
+
         </table>
       </div>
     </div>
