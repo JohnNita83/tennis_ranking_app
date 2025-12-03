@@ -43,6 +43,7 @@
       const fig = {{ plot_json | safe }};
       Plotly.newPlot('rank-chart', fig.data, fig.layout, {responsive: true});
     </script>
+
   </div>
 </div>
 {% else %}
@@ -79,6 +80,54 @@
 </div>
 {% endif %}
 
+<!-- ✅ Tournament detailed table by category -->
+<div class="col-12 mb-3">
+  <div class="card shadow-sm">
+    <div class="card-body">
+      <h5 class="card-title mb-3">Overview Per Category</h5>
+      <div class="table-responsive">
+        <table class="table table-sm table-bordered table-striped mb-0 text-center align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Category</th>
+              <th>Tournaments</th>
+              <th>Total Points</th>
+              <th>Ranking Points</th>
+              <th>Best Place</th>
+              <th>Matches Won</th>
+              <th>Matches Lost</th>
+              <th>Total Matches</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for cat, data in category_summary.items() %}
+            <tr>
+              <td class="fw-bold">{{ cat }}</td>
+              <td>{{ data.tournaments }}</td>
+              <td>{{ data.total_points }}</td>
+              <td>{{ cat_ranking_points.get(cat, 0) or "" }}</td>
+              <td>{{ data.best_place if data.best_place else "" }}</td>
+              <td>{{ data.won }}</td>
+              <td>{{ data.lost }}</td>
+              <td>{{ data.total }}</td>
+            </tr>
+            {% endfor %}
+            <tr class="table-secondary fw-bold">
+              <td>Grand Total</td>
+              <td>{{ grand_total.tournaments }}</td>
+              <td>{{ grand_total.total_points }}</td>
+              <td>{{ cat_ranking_points.values()|sum }}</td>
+              <td>{{ grand_total.best_place if grand_total.best_place else "" }}</td>
+              <td>{{ grand_total.won }}</td>
+              <td>{{ grand_total.lost }}</td>
+              <td>{{ grand_total.total }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
 
 
 {% endblock %}

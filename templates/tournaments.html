@@ -139,7 +139,7 @@
               {% set ns = namespace(total=0) %}
               {% for col_code, display_name in point_columns %}
                 {% set count = cat_counts[col_code] %}
-                <td>{{ "" if count == 0 else count }}</td>
+                <td>{{ "&mdash;"|safe if count == 0 else count }}</td>
                 {% set ns.total = ns.total + (count or 0) %}
               {% endfor %}
               <td class="fw-bold">{{ ns.total }}</td>
@@ -151,7 +151,7 @@
               {% set ns = namespace(total=0) %}
               {% for col_code, display_name in point_columns %}
                 {% set pts = cat_points[col_code] %}
-                <td>{{ "" if pts == 0 else pts }}</td>
+                <td>{{ "&mdash;"|safe if pts == 0 else pts }}</td>
                 {% set ns.total = ns.total + (pts or 0) %}
               {% endfor %}
               <td class="fw-bold">{{ ns.total }}</td>
@@ -165,12 +165,12 @@
                 {% set pts = cat_points[col_code] %}
                 {% set count = cat_counts[col_code] %}
                 {% set avg = (pts // count) if count > 0 else 0 %}
-                <td>{{ "" if avg == 0 else avg }}</td>
+                <td>{{ "&mdash;"|safe if avg == 0 else avg }}</td>
                 {% set ns.total_points = ns.total_points + (pts or 0) %}
                 {% set ns.total_counts = ns.total_counts + (count or 0) %}
               {% endfor %}
               {% set total_avg = (ns.total_points // ns.total_counts) if ns.total_counts > 0 else 0 %}
-              <td class="fw-bold">{{ "" if total_avg == 0 else total_avg }}</td>
+              <td class="fw-bold">{{ "&mdash;"|safe if total_avg == 0 else total_avg }}</td>
             </tr>
           </tbody>
         </table>
@@ -178,9 +178,6 @@
     </div>
   </div>
 </div>
-
-
-
 
 </div>
 

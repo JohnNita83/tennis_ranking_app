@@ -22,6 +22,7 @@ from rapidfuzz import process
 import plotly.graph_objs as go
 import plotly.utils
 import json
+from collections import defaultdict
 
 
 COOKIE_FILE = Path(__file__).with_name("cookie.txt")
@@ -364,8 +365,8 @@ def get_week_label_for_date(d: date) -> str:
 
 
 from datetime import datetime, timedelta
-
-from datetime import datetime, timedelta
+from collections import defaultdict
+import sqlite3
 
 def build_tournament_view(player_name: str, age_group: str) -> dict:
     ensure_tournaments_table()
@@ -423,6 +424,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         if cat_code in cat_counts:
             cat_counts[cat_code] += 1
 
+        # points by place/category
         pts = None
         if place is not None and cat_code:
             pm = points_map.get(place)
@@ -432,6 +434,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         if pts is not None and cat_code in cat_points:
             cat_points[cat_code] += pts
 
+        # next week's label and rank at that point
         if end_date:
             try:
                 d = datetime.fromisoformat(end_date).date()
@@ -441,6 +444,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
             except Exception:
                 rank_value = None
 
+        # diff/arrow relative to previous rank
         diff = None
         arrow = None
         if rank_value is not None and prev_rank is not None:
@@ -481,7 +485,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         }
         rows.append(row)
 
-        # 👉 per-row ranking_points: top-6 within 365 days from this row's end_date
+        # per-row ranking_points: top-6 within 365 days from this row's end_date
         current_end = parse_date_safe(end_date)
         if current_end:
             valid_points = []
@@ -493,6 +497,8 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
                         valid_points.append(p)
             top6 = sorted(valid_points, reverse=True)[:6]
             row["ranking_points"] = sum(top6) if top6 else 0
+        else:
+            row["ranking_points"] = None
 
     # max ranking points achieved across all rows
     if rows:
@@ -522,6 +528,57 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
                 rows[i]["is_top6"] = True
             top6_tournaments = [rows[i] for i in sorted(top6_indices)]
 
+    # Category summary (computed once after rows are built)
+    category_summary = defaultdict(lambda: {
+        "tournaments": 0,
+        "total_points": 0,
+        "best_place": None,
+        "won": 0,
+        "lost": 0,
+        "total": 0,
+    })
+
+    for rr in rows:
+        cat = rr["cat_code"]
+        if not cat:
+            continue
+        summary = category_summary[cat]
+        summary["tournaments"] += 1
+        summary["total_points"] += rr["points"] if rr["points"] else 0
+        place_val = rr["place"]
+        if place_val is not None and place_val > 0:  # skip zeros
+            if summary["best_place"] is None or place_val < summary["best_place"]:
+                summary["best_place"] = place_val
+        summary["won"] += rr["won"]
+        summary["lost"] += rr["lost"]
+        summary["total"] += rr["matches"]
+
+    # Filter categories with at least one tournament
+    filtered_summary = {
+        cat: data for cat, data in category_summary.items()
+        if data["tournaments"] >= 1
+    }
+
+    # Grand total row (best_place as min non-zero across categories)
+    best_places = [d["best_place"] for d in filtered_summary.values() if d["best_place"] not in (None, 0)]
+    grand_total = {
+        "tournaments": sum(d["tournaments"] for d in filtered_summary.values()),
+        "total_points": sum(d["total_points"] for d in filtered_summary.values()),
+        "best_place": min(best_places) if best_places else None,
+        "won": sum(d["won"] for d in filtered_summary.values()),
+        "lost": sum(d["lost"] for d in filtered_summary.values()),
+        "total": sum(d["total"] for d in filtered_summary.values()),
+    }
+
+    # Ranking points per category from rows marked is_top6 (latest 12-month window)
+    cat_ranking_points = {code: 0 for code, _disp in POINT_COLUMNS}
+    for rr in rows:
+        if rr.get("is_top6"):
+            cat = rr.get("cat_code")
+            pts = rr.get("points") or 0
+            if cat and pts:
+                cat_ranking_points[cat] += pts
+
     total_matches = total_won + total_lost
     won_pct = (total_won / total_matches * 100) if total_matches > 0 else 0
     lost_pct = (total_lost / total_matches * 100) if total_matches > 0 else 0
@@ -547,10 +604,14 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         "cat_counts": cat_counts,
         "cat_points": cat_points,
         "max_ranking_points": max_ranking_points,
+        "cat_ranking_points": cat_ranking_points,
         "top6_tournaments": top6_tournaments,
         "latest_rank": latest_rank,
         "latest_week": latest_week,
+        "category_summary": filtered_summary,
+        "grand_total": grand_total,
     }
+
 
 
 def get_db_connection():
@@ -1400,16 +1461,14 @@ def player():
                 weeks.append(r["Week"])
                 ranks.append(int(r["Rank"]))
 
-    # ✅ Sort weeks ascending by (year, week number)
     def parse_week(w):
         try:
             week_num, year = w.split("-")
             return (int(year), int(week_num))
         except Exception:
-            return (9999, 9999)  # fallback for malformed strings
+            return (9999, 9999)
 
     if weeks and ranks:
-        # zip weeks and ranks together, sort by parsed week, then unzip
         sorted_pairs = sorted(zip(weeks, ranks), key=lambda x: parse_week(x[0]))
         weeks, ranks = zip(*sorted_pairs)
 
@@ -1420,103 +1479,92 @@ def player():
                 go.Scatter(
                     x=weeks,
                     y=ranks,
-                    mode="lines+markers+text",   # include text labels
+                    mode="lines+markers+text",
                     line=dict(color="green", width=3),
                     marker=dict(size=8),
-                  # text=ranks,                  # show rank numbers
-                    textposition="top center"    # place labels above markers
+                    textposition="top center"
                 )
             ],
             layout=go.Layout(
                 title=f"Ranking progress for {name} ({age_group})",
                 xaxis=dict(title="Week", tickangle=-45),
-                yaxis=dict(title="Rank", autorange="reversed"),  # rank #1 at top
+                yaxis=dict(title="Rank", autorange="reversed"),
                 margin=dict(l=40, r=20, t=50, b=80),
                 height=400
             )
         )
-
         plot_json = json.dumps(fig, cls=plotly.utils.PlotlyJSONEncoder)
-
-
 
     # Call your tournament helper
     tournament_data = build_tournament_view(name, age_group)
-    # Debug: print top 6 tournaments and their points
     print(f"\n=== Top 6 tournaments for {name} ({age_group}) ===")
     for r in tournament_data["top6_tournaments"]:
         print(f"{r['tournament_name']} → {r['points']}")
 
-
     # Extract top 6 tournaments for bar chart
     bar_plot_json = None
-    if tournament_data["top6_tournaments"]:   # only build chart if list is non-empty
+    if tournament_data["top6_tournaments"]:
         names = [r["tournament_name"] for r in tournament_data["top6_tournaments"]]
         points = [r["points"] for r in tournament_data["top6_tournaments"]]
-
         bar_fig = go.Figure(
             data=[go.Bar(
                 x=points,
                 y=list(range(1, len(points)+1)),
                 orientation="h",
                 marker=dict(color="green"),
-                text=names,                 # show points
-                textposition="inside"       # place labels at end of bar
+                text=names,
+                textposition="inside"
             )],
             layout=go.Layout(
                 title=f"Top 6 Tournaments by Points ({age_group})",
-                xaxis=dict(title="Points",),
+                xaxis=dict(title="Points"),
                 yaxis=dict(title="Tournaments"),
                 margin=dict(l=40, r=20, t=50, b=80),
                 height=400
             )
         )
-
         bar_plot_json = json.dumps(bar_fig, cls=plotly.utils.PlotlyJSONEncoder)
 
     # Category totals chart
     cat_bar_plot_json = None
     if tournament_data["cat_points"]:
-        # Filter out categories with 0 points
         filtered = {c: p for c, p in tournament_data["cat_points"].items() if p > 0}
-
-        # Sort by points descending
         sorted_cats = sorted(filtered.items(), key=lambda x: x[1], reverse=True)
-
         categories = [c for c, _ in sorted_cats]
         totals = [p for _, p in sorted_cats]
-
         cat_fig = go.Figure(
-        data=[go.Bar(
-            y=categories,
-            x=totals,
-            orientation="h",
-            marker=dict(color="green"),   # ✅ green bars
-            text=totals,                  # ✅ show points
-            textposition="inside"        # ✅ place labels at end of bar
-        )],
-        layout=go.Layout(
-            title=f"Total Points by Category ({age_group})",
-            xaxis=dict(title="Total Points"),
-            yaxis=dict(title="Category", autorange="reversed"),  # largest at top
-            margin=dict(l=40, r=20, t=50, b=80),
-            height=400
+            data=[go.Bar(
+                y=categories,
+                x=totals,
+                orientation="h",
+                marker=dict(color="green"),
+                text=totals,
+                textposition="inside"
+            )],
+            layout=go.Layout(
+                title=f"Total Points by Category ({age_group})",
+                xaxis=dict(title="Total Points"),
+                yaxis=dict(title="Category", autorange="reversed"),
+                margin=dict(l=40, r=20, t=50, b=80),
+                height=400
+            )
         )
-    )
         cat_bar_plot_json = json.dumps(cat_fig, cls=plotly.utils.PlotlyJSONEncoder)
 
-
+    # ✅ Pass the full tournament_data dict into the template
     return render_template(
         "player.html",
         name=name,
         age_group=age_group,
         age_groups=AGE_GROUPS,
         rows=rows,
-        plot_json=plot_json,          
+        plot_json=plot_json,
         bar_plot_json=bar_plot_json,
-        cat_bar_plot_json=cat_bar_plot_json
+        cat_bar_plot_json=cat_bar_plot_json,
+        category_summary=tournament_data["category_summary"],  
+        grand_total=tournament_data["grand_total"],
+        cat_ranking_points=tournament_data["cat_ranking_points"],             
     )
-
 
 
 # Add this near the bottom of app.py, before app.run
