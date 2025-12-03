@@ -608,16 +608,14 @@ def clean_player_name(name: str) -> str:
 
 
 def sort_entries(df):
-    # Clean player names: remove [XXX] country codes if present
+    # Clean player names
     df["player"] = df["player"].astype(str).str.strip()
     df["player"] = df["player"].apply(
         lambda name: re.sub(r"^\[[A-Z]{3}\]\s*", "", name)
     )
-
-    # Normalize player names for matching
     df["player_norm"] = df["player"].str.lower().str.strip()
 
-    # Normalize Draw column (capital D)
+    # Normalize Draw column
     df["draw_lower"] = df["Draw"].astype(str).str.lower()
 
     # Assign priority
@@ -639,13 +637,20 @@ def sort_entries(df):
     df["reserve_num"] = df["draw_lower"].str.extract(r"(\d+)").astype(float)
     df["reserve_num"] = df["reserve_num"].fillna(9999)
 
-    # Custom sort logic
-    df_sorted = df.sort_values(
+    # 👉 Split into maindraw vs others
+    maindraw_df = df[df["draw_lower"].str.contains("maindraw")].sort_values(
+        by=["rank"], ascending=[True]
+    )
+    other_df = df[~df["draw_lower"].str.contains("maindraw")].sort_values(
         by=["draw_priority", "reserve_num", "draw_lower", "rank"],
         ascending=[True, True, True, True]
     )
 
+    # Concatenate back together
+    df_sorted = pd.concat([maindraw_df, other_df], ignore_index=True)
+
     return df_sorted.drop(columns=["draw_lower", "draw_priority", "reserve_num"])
+
 
 
 def format_display_name(s: str) -> str:
