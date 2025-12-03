@@ -45,6 +45,14 @@
             <li class="nav-item">
               <a class="nav-link" href="{{ url_for('points') }}">Points Table</a>
             </li>
+            <li class="nav-item">
+              {% if current_user.is_authenticated %}
+                <div class="d-flex align-items-center">
+                  <span class="nav-link mb-0" style="color:greenyellow">Logged in as {{ current_user.username }}</span>
+                  <a class="btn btn-outline-danger ms-2" href="{{ url_for('logout') }}">Logout</a>
+                </div>
+              {% endif %}
+            </li>
 
           </ul>
         </div>

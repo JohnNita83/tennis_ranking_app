@@ -95,16 +95,17 @@ def require_login():
 # Step 4: login/logout routes
 @app.route("/login", methods=["GET", "POST"])
 def login():
+    error = None
     if request.method == "POST":
         username = request.form["username"]
         password = request.form["password"]
         user = USERS.get(username)
         if user and user.password == password:
             login_user(user)
-            return redirect(url_for("rankings"))  # or homepage
+            return redirect(url_for("rankings"))
         else:
-            return "Invalid credentials", 401
-    return render_template("login.html")
+            error = "Invalid username or password"
+    return render_template("login.html", error=error)
 
 @app.route("/logout")
 @login_required
