@@ -1504,8 +1504,13 @@ def player():
     # Extract top 6 tournaments for bar chart
     bar_plot_json = None
     if tournament_data["top6_tournaments"]:
-        names = [r["tournament_name"] for r in tournament_data["top6_tournaments"]]
-        points = [r["points"] for r in tournament_data["top6_tournaments"]]
+        # Sort tournaments by points ascending so largest is last
+        sorted_tournaments = sorted(
+            tournament_data["top6_tournaments"], key=lambda r: r["points"]
+        )
+        names = [r["tournament_name"] for r in sorted_tournaments]
+        points = [r["points"] for r in sorted_tournaments]
+
         bar_fig = go.Figure(
             data=[go.Bar(
                 x=points,
@@ -1518,12 +1523,13 @@ def player():
             layout=go.Layout(
                 title=f"Top 6 Tournaments by Points ({age_group})",
                 xaxis=dict(title="Points"),
-                yaxis=dict(title="Tournaments"),
-                margin=dict(l=40, r=20, t=50, b=80),
+                yaxis=dict(title="Tournaments", autorange="reversed"),  # ✅ flip so highest at bottom
+                margin=dict(l=120, r=20, t=50, b=80),
                 height=400
             )
         )
         bar_plot_json = json.dumps(bar_fig, cls=plotly.utils.PlotlyJSONEncoder)
+
 
     # Category totals chart
     cat_bar_plot_json = None

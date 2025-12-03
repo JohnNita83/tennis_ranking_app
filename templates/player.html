@@ -50,36 +50,6 @@
 <p class="text-muted">No ranking data found for {{ name }} in {{ age_group }}.</p>
 {% endif %}
 
-<!-- ✅ Top 6 tournaments bar chart -->
-{% if bar_plot_json %}
-<div class="card shadow-sm mb-3">
-  <div class="card-body">
-    <h5 class="card-title mb-3">Top 6 Tournaments by Points</h5>
-    <div id="bar-chart"></div>
-    <script>
-      const barFig = {{ bar_plot_json | safe }};
-      Plotly.newPlot('bar-chart', barFig.data, barFig.layout, {responsive: true});
-    </script>
-  </div>
-</div>
-{% else %}
-<p class="text-muted">No tournament points found for {{ age_group }}.</p>
-{% endif %}
-
-<!-- ✅ Tournament points by category -->
-{% if cat_bar_plot_json %}
-<div class="card shadow-sm mb-3">
-  <div class="card-body">
-    <h5 class="card-title mb-3">Total Points by Category</h5>
-    <div id="cat-bar-chart"></div>
-    <script>
-      const catFig = {{ cat_bar_plot_json | safe }};
-      Plotly.newPlot('cat-bar-chart', catFig.data, catFig.layout, {responsive: true});
-    </script>
-  </div>
-</div>
-{% endif %}
-
 <!-- ✅ Tournament detailed table by category -->
 <div class="col-12 mb-3">
   <div class="card shadow-sm">
@@ -130,5 +100,34 @@
   </div>
 </div>
 
+<!-- ✅ Top 6 tournaments bar chart -->
+{% if bar_plot_json %}
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h5 class="card-title mb-3">Top 6 Tournaments by Points</h5>
+    <div id="bar-chart"></div>
+    <script>
+      const barFig = {{ bar_plot_json | safe }};
+      Plotly.newPlot('bar-chart', barFig.data, barFig.layout, {responsive: true});
+    </script>
+  </div>
+</div>
+{% else %}
+<p class="text-muted">No tournament points found for {{ age_group }}.</p>
+{% endif %}
+
+<!-- ✅ Tournament points by category -->
+{% if cat_bar_plot_json %}
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h5 class="card-title mb-3">Total Points by Category</h5>
+    <div id="cat-bar-chart"></div>
+    <script>
+      const catFig = {{ cat_bar_plot_json | safe }};
+      Plotly.newPlot('cat-bar-chart', catFig.data, catFig.layout, {responsive: true});
+    </script>
+  </div>
+</div>
+{% endif %}
 
 {% endblock %}
