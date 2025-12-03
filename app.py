@@ -363,12 +363,17 @@ def get_week_label_for_date(d: date) -> str:
     return f"{week_num}-{year}"
 
 
+from datetime import datetime, timedelta
+
+from datetime import datetime, timedelta
+
 def build_tournament_view(player_name: str, age_group: str) -> dict:
     ensure_tournaments_table()
     points_map = load_points_map()
     rankings_map = load_player_rankings(player_name, age_group)
 
     conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
     cur = conn.cursor()
     cur.execute(
         """
@@ -383,8 +388,13 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
     db_rows = cur.fetchall()
     conn.close()
 
+    def parse_date_safe(s):
+        try:
+            return datetime.fromisoformat(s).date() if s else None
+        except Exception:
+            return None
+
     rows = []
-    points_list = []
     prev_rank = None
 
     total_won = 0
@@ -392,19 +402,21 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
     cat_counts = {code: 0 for code, _disp in POINT_COLUMNS}
     cat_points = {code: 0 for code, _disp in POINT_COLUMNS}
 
-    # initialise so they always exist
     max_ranking_points = None
     top6_tournaments = []
 
+    # Build enriched rows and compute per-row ranking_points with 1-year cutoff
     for idx, r in enumerate(db_rows, start=1):
         row_id = r["id"]
         start_date = r["start_date"]
         end_date = r["end_date"]
-        cat_code = r["category_code"]
+        wk_label = None
+        rank_value = None
+        cat_code = r["category_code"] if "category_code" in r.keys() else r["cat_code"]
         place = r["place"]
+
         won = r["won"] if r["won"] is not None else 0
         lost = r["lost"] if r["lost"] is not None else 0
-
         total_won += won
         total_lost += lost
 
@@ -412,20 +424,13 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
             cat_counts[cat_code] += 1
 
         pts = None
-        if place is not None and cat_code and place in points_map:
-            pts = points_map[place].get(cat_code)
+        if place is not None and cat_code:
+            pm = points_map.get(place)
+            if pm:
+                pts = pm.get(cat_code)
 
         if pts is not None and cat_code in cat_points:
             cat_points[cat_code] += pts
-
-        points_list.append(pts if pts is not None else 0)
-
-        top6 = sorted(points_list, reverse=True)[:6]
-        ranking_points = sum(top6)
-
-        rank_value = None
-        wk_label = None
-        next_week_date = None
 
         if end_date:
             try:
@@ -450,7 +455,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
 
         matches = won + lost
 
-        rows.append({
+        row = {
             "id": row_id,
             "no": idx,
             "start_date": start_date,
@@ -462,7 +467,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
             "close_date": r["close_date"],
             "place": place,
             "points": pts,
-            "ranking_points": ranking_points,
+            "ranking_points": None,  # set below
             "rank": rank_value,
             "diff": diff,
             "arrow": arrow,
@@ -472,10 +477,24 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
             "tournament_id": r["tournament_id"],
             "is_international": r["is_international"],
             "event_id": r["event_id"],
-        })
+            "is_top6": False,
+        }
+        rows.append(row)
 
+        # 👉 per-row ranking_points: top-6 within 365 days from this row's end_date
+        current_end = parse_date_safe(end_date)
+        if current_end:
+            valid_points = []
+            for prev in rows:  # includes current + all previous
+                prev_end = parse_date_safe(prev["end_date"])
+                if prev_end and 0 <= (current_end - prev_end).days <= 365:
+                    p = prev["points"]
+                    if p is not None and p > 0:
+                        valid_points.append(p)
+            top6 = sorted(valid_points, reverse=True)[:6]
+            row["ranking_points"] = sum(top6) if top6 else 0
 
-    # 👉 after loop, compute max and top6 safely
+    # max ranking points achieved across all rows
     if rows:
         max_ranking_points = max(
             (r["ranking_points"] for r in rows if r["ranking_points"] is not None),
@@ -484,33 +503,37 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         for r in rows:
             r["is_best_ranking_points"] = (r["ranking_points"] == max_ranking_points)
 
-        scored_rows = [(idx, r["points"]) for idx, r in enumerate(rows) if r["points"] is not None]
-        scored_rows.sort(key=lambda x: x[1], reverse=True)
-        top6_indices = {idx for idx, pts in scored_rows[:6]}
-        for idx, r in enumerate(rows):
-            r["is_top6"] = idx in top6_indices
-        top6_tournaments = [rows[idx] for idx, pts in scored_rows[:6]]
-
+    # Global highlight: latest row's 12-month window top-6
+    if rows:
+        last_row = rows[-1]
+        last_end = parse_date_safe(last_row["end_date"])
+        if last_end:
+            cutoff = last_end - timedelta(days=365)
+            candidates = []
+            for i, rr in enumerate(rows):
+                end = parse_date_safe(rr["end_date"])
+                if end and cutoff <= end <= last_end:
+                    p = rr["points"]
+                    if p is not None and p > 0:
+                        candidates.append((i, p))
+            candidates.sort(key=lambda x: x[1], reverse=True)
+            top6_indices = {i for i, p in candidates[:6]}
+            for i in top6_indices:
+                rows[i]["is_top6"] = True
+            top6_tournaments = [rows[i] for i in sorted(top6_indices)]
 
     total_matches = total_won + total_lost
     won_pct = (total_won / total_matches * 100) if total_matches > 0 else 0
     lost_pct = (total_lost / total_matches * 100) if total_matches > 0 else 0
 
-    # Get the rank from the most recent week
     latest_week = None
     latest_rank = None
     if rankings_map:
-        # parse week labels properly instead of plain string max
-        def parse_week_label(label):
-            # e.g. "9-2025" → (2025, 9)
+        def parse_week_label(label: str):
             wk, yr = label.split("-")
             return int(yr), int(wk)
-
         latest_week = max(rankings_map.keys(), key=parse_week_label)
         latest_rank = rankings_map[latest_week]
-
-        print("Latest week from rankings_map:", latest_week)
-        print("Latest rank from rankings_map:", latest_rank)
 
     return {
         "rows": rows,
@@ -528,7 +551,6 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         "latest_rank": latest_rank,
         "latest_week": latest_week,
     }
-
 
 
 def get_db_connection():
@@ -948,13 +970,10 @@ def tournaments():
                 print("Updating event_id for row", row_id, "to", value)
                 cur.execute("UPDATE tournaments SET event_id = ? WHERE id = ?", (value if value != "" else None, row_id))
 
-
-
         conn.commit()
         conn.close()
         flash("Tournament Saved")
         return redirect(url_for("tournaments", player=player_name, age_group=age_group))
-
 
     # Add domestic tournament from TI ID
     if request.method == "POST" and action == "add_domestic":
@@ -1015,7 +1034,6 @@ def tournaments():
         conn.close()
         return redirect(url_for("tournaments", player=player_name, age_group=age_group))
 
-
     # Default: load view data
     view = build_tournament_view(player_name, age_group)
     rows = view["rows"]
@@ -1036,9 +1054,6 @@ def tournaments():
         latest_week=view["latest_week"],
         latest_rank=view["latest_rank"], 
     )
-
-
-
    
 @app.route("/tournaments/delete/<int:row_id>", methods=["POST"])
 def delete_tournament(row_id):
@@ -1112,8 +1127,6 @@ def entries_debug():
     except Exception as e:
         return f"❌ Error: {str(e)}"
 
-
-
 @app.route("/entries")
 def entries_page():
     tournament_id = request.args.get("tournament_id")
@@ -1135,10 +1148,6 @@ def entries_page():
     rankings_df["name_norm"] = rankings_df["name"].apply(normalize_name)
 
 
-
-    # --- Debug mismatches (prints to console/logs) ---
-    debug_matches(entries_df, rankings_df)
-
     # --- Return something to the browser ---
     # Option A: render a template
     return render_template(
@@ -1152,8 +1161,6 @@ def entries_page():
     #     "entries": entries_df.to_dict(orient="records"),
     #     "rankings": rankings_df.to_dict(orient="records")
     # })
-
-
 
 @app.route("/import_entries/<tournament_id>", methods=["GET", "POST"])
 def import_entries(tournament_id):
