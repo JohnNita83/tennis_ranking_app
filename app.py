@@ -474,6 +474,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
             "event_id": r["event_id"],
         })
 
+
     # 👉 after loop, compute max and top6 safely
     if rows:
         max_ranking_points = max(
@@ -490,9 +491,26 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
             r["is_top6"] = idx in top6_indices
         top6_tournaments = [rows[idx] for idx, pts in scored_rows[:6]]
 
+
     total_matches = total_won + total_lost
     won_pct = (total_won / total_matches * 100) if total_matches > 0 else 0
     lost_pct = (total_lost / total_matches * 100) if total_matches > 0 else 0
+
+    # Get the rank from the most recent week
+    latest_week = None
+    latest_rank = None
+    if rankings_map:
+        # parse week labels properly instead of plain string max
+        def parse_week_label(label):
+            # e.g. "9-2025" → (2025, 9)
+            wk, yr = label.split("-")
+            return int(yr), int(wk)
+
+        latest_week = max(rankings_map.keys(), key=parse_week_label)
+        latest_rank = rankings_map[latest_week]
+
+        print("Latest week from rankings_map:", latest_week)
+        print("Latest rank from rankings_map:", latest_rank)
 
     return {
         "rows": rows,
@@ -506,7 +524,9 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         "cat_counts": cat_counts,
         "cat_points": cat_points,
         "max_ranking_points": max_ranking_points,
-        "top6_tournaments": top6_tournaments
+        "top6_tournaments": top6_tournaments,
+        "latest_rank": latest_rank,
+        "latest_week": latest_week,
     }
 
 
@@ -996,7 +1016,7 @@ def tournaments():
     rows = view["rows"]
     totals = view["totals"]
     cat_counts = view["cat_counts"]
-    cat_points = view["cat_points"]   # 👈 extract from view
+    cat_points = view["cat_points"]
 
     return render_template(
         "tournaments.html",
@@ -1006,8 +1026,10 @@ def tournaments():
         rows=rows,
         totals=totals,
         cat_counts=cat_counts,
-        cat_points=cat_points,   # 👈 now defined
+        cat_points=cat_points,
         point_columns=POINT_COLUMNS,
+        latest_week=view["latest_week"],
+        latest_rank=view["latest_rank"], 
     )
 
 
