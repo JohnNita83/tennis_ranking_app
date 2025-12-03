@@ -81,7 +81,7 @@
       <div class="card-body">
         <h6 class="card-title mb-3">Match Summary</h6>
         <div class="table-responsive">
-          <table class="table table-sm table-bordered mb-0 text-center align-middle">
+          <table class="table table-sm table-bordered table-striped mb-0 text-center align-middle">
             <thead class="table-light">
               <tr>
                 <th>Won</th>
@@ -117,7 +117,7 @@
     <div class="card-body">
       <h6 class="card-title mb-3">Tournaments by Category</h6>
       <div class="table-responsive">
-        <table class="table table-sm table-bordered mb-0 text-center align-middle">
+        <table class="table table-sm table-bordered table-striped mb-0 text-center align-middle">
           <thead class="table-light">
             <tr>
               <th>Cat</th>
@@ -134,7 +134,7 @@
               {% set ns = namespace(total=0) %}
               {% for col_code, display_name in point_columns %}
                 {% set count = cat_counts[col_code] %}
-                <td>{{ count }}</td>
+                <td>{{ "" if count == 0 else count }}</td>
                 {% set ns.total = ns.total + (count or 0) %}
               {% endfor %}
               <td class="fw-bold">{{ ns.total }}</td>
@@ -146,7 +146,7 @@
               {% set ns = namespace(total=0) %}
               {% for col_code, display_name in point_columns %}
                 {% set pts = cat_points[col_code] %}
-                <td>{{ pts }}</td>
+                <td>{{ "" if pts == 0 else pts }}</td>
                 {% set ns.total = ns.total + (pts or 0) %}
               {% endfor %}
               <td class="fw-bold">{{ ns.total }}</td>
@@ -160,12 +160,12 @@
                 {% set pts = cat_points[col_code] %}
                 {% set count = cat_counts[col_code] %}
                 {% set avg = (pts // count) if count > 0 else 0 %}
-                <td>{{ avg }}</td>
+                <td>{{ "" if avg == 0 else avg }}</td>
                 {% set ns.total_points = ns.total_points + (pts or 0) %}
                 {% set ns.total_counts = ns.total_counts + (count or 0) %}
               {% endfor %}
               {% set total_avg = (ns.total_points // ns.total_counts) if ns.total_counts > 0 else 0 %}
-              <td class="fw-bold">{{ total_avg }}</td>
+              <td class="fw-bold">{{ "" if total_avg == 0 else total_avg }}</td>
             </tr>
           </tbody>
         </table>
@@ -173,6 +173,7 @@
     </div>
   </div>
 </div>
+
 
 
 
@@ -250,7 +251,7 @@
                       value="{{ name }}"
                       class="form-control form-control-sm"
                       size="{{ ch_len }}"
-                      style="min-width: 25ch; max-width: 48ch; width: auto; padding-right:0px;">
+                      style="width: 30ch; padding-right:0px;">
               </td>
 
               <td style="font-size: .875rem;">
@@ -258,7 +259,7 @@
                 <select
                   name="cat_{{ r.id }}"
                   class="form-select form-select-sm"
-                  style="width:auto; max-width:200px;"
+                  style="width:auto; max-width:96px;"
                 >
                   <option value=""></option>
                   {% for col_code, display_name in point_columns %}

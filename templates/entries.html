@@ -10,13 +10,13 @@
         <th>#</th>
         <th>Draw</th>
         <th>Player</th>
-        <th>Seed</th>
-        <th>Rank</th>
-        <th>Age Group</th>
-        <th>WTN</th>
-        <th>Ranking Points</th>
-        <th>Year of Birth</th>
-        <th>Tournaments</th>
+        <th style="text-align: center;">Seed</th>
+        <th style="text-align: center;">Rank</th>
+        <th style="text-align: center;">Age Group</th>
+        <th style="text-align: center;">WTN</th>
+        <th style="text-align: center;">Ranking Points</th>
+        <th style="text-align: center;">Year of Birth</th>
+        <th style="text-align: center;">Tournaments</th>
       </tr>
     </thead>
     <tbody>
@@ -37,13 +37,13 @@
           {{ entry.Draw }}
         </td>
         <td>{{ entry.player }}</td>
-        <td>{{ entry.Seed }}</td>
-        <td>{{ entry.rank }}</td>
-        <td>{{ entry.agegroup }}</td>
-        <td>{{ entry.wtn }}</td>
-        <td>{{ entry.ranking_points }}</td>
-        <td>{{ entry.year_of_birth }}</td>
-        <td>{{ entry.tournaments }}</td>
+        <td style="text-align: center;">{{ entry.Seed }}</td>
+        <td style="text-align: center;">{{ entry.rank }}</td>
+        <td style="text-align: center;">{{ entry.agegroup }}</td>
+        <td style="text-align: center;">{{ entry.wtn }}</td>
+        <td style="text-align: center;">{{ entry.ranking_points }}</td>
+        <td style="text-align: center;">{{ entry.year_of_birth }}</td>
+        <td style="text-align: center;">{{ entry.tournaments }}</td>
       </tr>
       {% endfor %}
     </tbody>

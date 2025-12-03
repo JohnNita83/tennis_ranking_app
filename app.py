@@ -1334,7 +1334,7 @@ def player():
                     mode="lines+markers+text",   # include text labels
                     line=dict(color="green", width=3),
                     marker=dict(size=8),
-                    text=ranks,                  # show rank numbers
+                  # text=ranks,                  # show rank numbers
                     textposition="top center"    # place labels above markers
                 )
             ],
