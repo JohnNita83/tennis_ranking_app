@@ -9,6 +9,10 @@
         left:10px;
         margin-top: -35px!important;
       }
+      .table-green {
+        --bs-table-bg: green;
+        --bs-table-color: white;
+      }
     </style>
   </head>  
 <body>  
@@ -69,7 +73,7 @@
       <h5 class="card-title mb-3">Category Overview ({{ age_group }})</h5>
       <div class="table-responsive">
         <table class="table table-sm table-bordered table-striped mb-0 text-center align-middle">
-          <thead class="table-light">
+          <thead class="table-secondary ">
             <tr>
               <th>Category</th>
               <th>Tournaments</th>
@@ -94,15 +98,15 @@
             <td>{{ "&mdash;"|safe if data.total == 0 else data.total }}</td>
           </tr>
           {% endfor %}
-          <tr class="table-secondary fw-bold">
-            <td>Total</td>
-            <td>{{ grand_total.tournaments }}</td>
-            <td>{{ grand_total.total_points }}</td>
-            <td>{{ cat_ranking_points.values()|sum }}</td>
-            <td>{{ grand_total.best_place if grand_total.best_place else "&mdash;"|safe }}</td>
-            <td>{{ grand_total.won }}</td>
-            <td>{{ grand_total.lost }}</td>
-            <td>{{ grand_total.total }}</td>
+          <tr class="fw-bold table-green">
+            <td style="color:white">Total</td>
+            <td style="color:white">{{ grand_total.tournaments }}</td>
+            <td style="color:white">{{ grand_total.total_points }}</td>
+            <td style="color:white">{{ cat_ranking_points.values()|sum }}</td>
+            <td style="color:white">{{ grand_total.best_place if grand_total.best_place else "&mdash;"|safe }}</td>
+            <td style="color:white">{{ grand_total.won }}</td>
+            <td style="color:white">{{ grand_total.lost }}</td>
+            <td style="color:white">{{ grand_total.total }}</td>
           </tr>
         </tbody>
 
