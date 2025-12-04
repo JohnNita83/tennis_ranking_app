@@ -1,4 +1,24 @@
-F:
-cd onedrive\desktop\tennis_ranking_app
-venv\Scripts\activate - Acivate venv to be able to run the app
-python app.py - Run the app
+Start flask
+./start_flask.sh 
+
+Start flask on a specific port
+flask run --host=0.0.0.0 --port=5050
+
+workflow to push from dev to main:
+# Make sure dev is pushed
+git push origin dev
+
+# Switch to main
+git checkout main
+
+# Update main with the latest from GitHub
+git pull origin main
+
+# Merge dev into main
+git merge dev
+
+# Push updated main back to GitHub
+git push origin main
+
+Link to app:
+https://tennis-ranking-app.onrender.com/

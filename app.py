@@ -1524,7 +1524,7 @@ def player():
                 title=f"Top 6 Tournaments by Points ({age_group})",
                 xaxis=dict(title="Points"),
                 yaxis=dict(title="Tournaments", autorange="reversed"),  # ✅ flip so highest at bottom
-                margin=dict(l=120, r=20, t=50, b=80),
+                margin=dict(l=40, r=20, t=50, b=80),
                 height=400
             )
         )

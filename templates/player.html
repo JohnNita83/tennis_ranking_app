@@ -1,5 +1,17 @@
 {% extends "base.html" %}
 {% block content %}
+<html>  
+<head>
+    <style>
+      /* Move Plotly modebar to bottom of chart */
+      .modebar {
+        bottom: 0 !important;
+        left:10px;
+        margin-top: -35px!important;
+      }
+    </style>
+  </head>  
+<body>  
 <!-- Load Plotly globally -->
 <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
 <div class="card shadow-sm mb-3">
@@ -36,7 +48,7 @@
 {% if plot_json %}
 <div class="card shadow-sm mb-3">
   <div class="card-body">
-    <h5 class="card-title mb-3">Ranking Progress</h5>
+    <h6 class="card-title mb-3" style="color:white">Ranking Progress</h6>
     <div id="rank-chart"></div>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <script>
@@ -54,7 +66,7 @@
 <div class="col-12 mb-3">
   <div class="card shadow-sm">
     <div class="card-body">
-      <h5 class="card-title mb-3">Overview Per Category</h5>
+      <h5 class="card-title mb-3">Category Overview ({{ age_group }})</h5>
       <div class="table-responsive">
         <table class="table table-sm table-bordered table-striped mb-0 text-center align-middle">
           <thead class="table-light">
@@ -64,8 +76,8 @@
               <th>Total Points</th>
               <th>Ranking Points</th>
               <th>Best Place</th>
-              <th>Matches Won</th>
-              <th>Matches Lost</th>
+              <th>Won Matches</th>
+              <th>Lost Matches</th>
               <th>Total Matches</th>
             </tr>
           </thead>
@@ -104,7 +116,7 @@
 {% if bar_plot_json %}
 <div class="card shadow-sm mb-3">
   <div class="card-body">
-    <h5 class="card-title mb-3">Top 6 Tournaments by Points</h5>
+    <h6 class="card-title mb-3" style="color:white">Top 6 Tournaments by Points</h6>
     <div id="bar-chart"></div>
     <script>
       const barFig = {{ bar_plot_json | safe }};
@@ -120,7 +132,7 @@
 {% if cat_bar_plot_json %}
 <div class="card shadow-sm mb-3">
   <div class="card-body">
-    <h5 class="card-title mb-3">Total Points by Category</h5>
+    <h6 class="card-title mb-3" style="color:white">Total Points by Category</h6>
     <div id="cat-bar-chart"></div>
     <script>
       const catFig = {{ cat_bar_plot_json | safe }};
@@ -129,5 +141,6 @@
   </div>
 </div>
 {% endif %}
-
+</body>
+</html>
 {% endblock %}
