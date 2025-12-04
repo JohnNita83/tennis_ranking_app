@@ -536,6 +536,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         "won": 0,
         "lost": 0,
         "total": 0,
+        "max_points": 0,
     })
 
     for rr in rows:
@@ -553,6 +554,10 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         summary["lost"] += rr["lost"]
         summary["total"] += rr["matches"]
 
+        # ✅ track max points for this category
+        if rr["points"] and rr["points"] > summary["max_points"]:
+            summary["max_points"] = rr["points"]
+
     # Filter categories with at least one tournament
     filtered_summary = {
         cat: data for cat, data in category_summary.items()
@@ -568,6 +573,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         "won": sum(d["won"] for d in filtered_summary.values()),
         "lost": sum(d["lost"] for d in filtered_summary.values()),
         "total": sum(d["total"] for d in filtered_summary.values()),
+        "max_points": max((d["max_points"] for d in filtered_summary.values()), default=0),
     }
 
     # Ranking points per category from rows marked is_top6 (latest 12-month window)
@@ -592,6 +598,17 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         latest_week = max(rankings_map.keys(), key=parse_week_label)
         latest_rank = rankings_map[latest_week]
 
+    best_rank = None
+    best_rank_week = None
+    if rankings_map:
+        # find the lowest (best) rank value
+        best_rank = min(rankings_map.values())
+        # find the week(s) where that rank occurred
+        for wk, val in rankings_map.items():
+            if val == best_rank:
+                best_rank_week = wk
+                break
+
     return {
         "rows": rows,
         "totals": {
@@ -608,6 +625,8 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         "top6_tournaments": top6_tournaments,
         "latest_rank": latest_rank,
         "latest_week": latest_week,
+        "best_rank": best_rank,
+        "best_rank_week": best_rank_week,
         "category_summary": filtered_summary,
         "grand_total": grand_total,
     }
@@ -1569,7 +1588,10 @@ def player():
         cat_bar_plot_json=cat_bar_plot_json,
         category_summary=tournament_data["category_summary"],  
         grand_total=tournament_data["grand_total"],
-        cat_ranking_points=tournament_data["cat_ranking_points"],             
+        cat_ranking_points=tournament_data["cat_ranking_points"],
+        latest_rank=tournament_data["latest_rank"],
+        best_rank=tournament_data["best_rank"],
+        best_rank_week=tournament_data["best_rank_week"],
     )
 
 

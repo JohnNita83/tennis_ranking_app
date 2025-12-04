@@ -46,6 +46,11 @@
         <button type="submit" class="btn btn-primary w-100">Apply</button>
       </div>
     </form>
+    <div class="alert alert-info mb-3 text-muted">
+      Current ranking: <strong>{{ latest_rank if latest_rank else "&mdash;"|safe }}</strong><br>
+      Best ranking: <strong>{{ best_rank if best_rank else "&mdash;"|safe }}</strong>
+      {% if best_rank_week %} on week <strong>{{ best_rank_week }}</strong>{% endif %}
+    </div>
   </div>
 </div>
 <!-- ✅ Ranking over time chart section -->
@@ -73,43 +78,45 @@
       <h5 class="card-title mb-3">Category Overview ({{ age_group }})</h5>
       <div class="table-responsive">
         <table class="table table-sm table-bordered table-striped mb-0 text-center align-middle">
-          <thead class="table-secondary ">
+          <thead class="table-secondary">
             <tr>
               <th>Category</th>
               <th>Tournaments</th>
               <th>Total Points</th>
               <th>Ranking Points</th>
               <th>Best Place</th>
+              <th>Best Points</th>
               <th>Won Matches</th>
               <th>Lost Matches</th>
               <th>Total Matches</th>
             </tr>
           </thead>
           <tbody>
-          {% for cat, data in category_summary.items() %}
-          <tr>
-            <td class="fw-bold">{{ cat }}</td>
-            <td>{{ "&mdash;"|safe if data.tournaments == 0 else data.tournaments }}</td>
-            <td>{{ "&mdash;"|safe if data.total_points == 0 else data.total_points }}</td>
-            <td>{{ "&mdash;"|safe if cat_ranking_points.get(cat, 0) == 0 else cat_ranking_points.get(cat, 0) }}</td>
-            <td>{{ data.best_place if data.best_place else "&mdash;"|safe }}</td>
-            <td>{{ "&mdash;"|safe if data.won == 0 else data.won }}</td>
-            <td>{{ "&mdash;"|safe if data.lost == 0 else data.lost }}</td>
-            <td>{{ "&mdash;"|safe if data.total == 0 else data.total }}</td>
-          </tr>
-          {% endfor %}
-          <tr class="fw-bold table-green">
-            <td style="color:white">Total</td>
-            <td style="color:white">{{ grand_total.tournaments }}</td>
-            <td style="color:white">{{ grand_total.total_points }}</td>
-            <td style="color:white">{{ cat_ranking_points.values()|sum }}</td>
-            <td style="color:white">{{ grand_total.best_place if grand_total.best_place else "&mdash;"|safe }}</td>
-            <td style="color:white">{{ grand_total.won }}</td>
-            <td style="color:white">{{ grand_total.lost }}</td>
-            <td style="color:white">{{ grand_total.total }}</td>
-          </tr>
-        </tbody>
-
+            {% for cat, data in category_summary.items() %}
+            <tr>
+              <td class="fw-bold">{{ cat }}</td>
+              <td>{{ "&mdash;"|safe if data.tournaments == 0 else data.tournaments }}</td>
+              <td>{{ "&mdash;"|safe if data.total_points == 0 else data.total_points }}</td>
+              <td>{{ "&mdash;"|safe if cat_ranking_points.get(cat, 0) == 0 else cat_ranking_points.get(cat, 0) }}</td>
+              <td>{{ data.best_place if data.best_place else "&mdash;"|safe }}</td>
+              <td>{{ "&mdash;"|safe if data.max_points == 0 else data.max_points }}</td>
+              <td>{{ "&mdash;"|safe if data.won == 0 else data.won }}</td>
+              <td>{{ "&mdash;"|safe if data.lost == 0 else data.lost }}</td>
+              <td>{{ "&mdash;"|safe if data.total == 0 else data.total }}</td>
+            </tr>
+            {% endfor %}
+            <tr class="fw-bold table-green">
+              <td style="color:white">Total</td>
+              <td style="color:white">{{ grand_total.tournaments }}</td>
+              <td style="color:white">{{ grand_total.total_points }}</td>
+              <td style="color:white">{{ cat_ranking_points.values()|sum }}</td>
+              <td style="color:white">{{ grand_total.best_place if grand_total.best_place else "&mdash;"|safe }}</td>
+              <td style="color:white">{{ grand_total.max_points if grand_total.max_points else "&mdash;"|safe }}</td>
+              <td style="color:white">{{ grand_total.won }}</td>
+              <td style="color:white">{{ grand_total.lost }}</td>
+              <td style="color:white">{{ grand_total.total }}</td>
+            </tr>
+          </tbody>
         </table>
       </div>
     </div>
