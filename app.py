@@ -1383,11 +1383,11 @@ def entries(tournament_id):
     # Convert rank to numeric
     rankings_df["rank_num"] = pd.to_numeric(rankings_df["rank"], errors="coerce")
 
-    # ✅ Decide which week to use based on close_date and also fetch tournament_name
+    # ✅ Fetch tournament_name and draw_id from tournaments table
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
-        "SELECT close_date, tournament_name FROM tournaments WHERE tournament_id = ?",
+        "SELECT close_date, tournament_name, draw_id FROM tournaments WHERE tournament_id = ?",
         (tournament_id,)
     )
     row = cur.fetchone()
@@ -1395,6 +1395,7 @@ def entries(tournament_id):
 
     close_date = row["close_date"] if row else None
     tournament_name = row["tournament_name"] if row else ""
+    draw_id = row["draw_id"] if row else None
 
     today = datetime.utcnow().date()
     if close_date:
@@ -1455,8 +1456,10 @@ def entries(tournament_id):
         tournament_id=tournament_id,
         event_id=event_id,
         entries=entries,
-        tournament_name=tournament_name
+        tournament_name=tournament_name,
+        draw_id=draw_id   # 👈 now available in template
     )
+
 
     
 @app.route("/player")

@@ -2,7 +2,14 @@
 {% block content %}
 <h2 style="padding-top:30px;">Entries for Tournament</h2>
 <h2 style="padding-bottom:30px;"" class="fw-bold text-success">{{ tournament_name }}</h2>
-
+  {% if draw_id %}
+    <a href="https://ti.tournamentsoftware.com/tournament/{{ tournament_id }}/draw/{{ draw_id }}"
+       target="_blank" style="text-decoration: none;"
+       class="btn btn-success btn-md">
+      VIEW DRAW
+    </a>
+  {% endif %}
+</p>
 <div class="table-responsive" style="overflow-x: auto; white-space: nowrap;">
   <table class="table table-sm table-striped align-middle">
     <thead class="table-light">
