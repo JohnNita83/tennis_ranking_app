@@ -13,6 +13,13 @@
         --bs-table-bg: green;
         --bs-table-color: white;
       }
+      @media (max-width: 600px) {
+      .table-responsive td:first-child,
+      .table-responsive th:first-child {
+        position: sticky;
+        left: 0;
+      }
+    }
     </style>
   </head>  
 <body>  

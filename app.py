@@ -264,6 +264,12 @@ def ensure_tournaments_table():
     except sqlite3.OperationalError:
         # Column already exists
         pass
+    # Add draw_id column if missing
+    try:
+        cur.execute("ALTER TABLE tournaments ADD COLUMN draw_id INTEGER")
+    except sqlite3.OperationalError:
+        # Column already exists
+        pass
 
     conn.commit()
     conn.close()
@@ -481,6 +487,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
             "tournament_id": r["tournament_id"],
             "is_international": r["is_international"],
             "event_id": r["event_id"],
+            "draw_id": r["draw_id"],
             "is_top6": False,
         }
         rows.append(row)
@@ -1049,6 +1056,10 @@ def tournaments():
                 row_id = key.split("_")[1]
                 print("Updating event_id for row", row_id, "to", value)
                 cur.execute("UPDATE tournaments SET event_id = ? WHERE id = ?", (value if value != "" else None, row_id))
+            elif key.startswith("draw_"):
+                row_id = key.split("_")[1]
+                print("Updating draw_id for row", row_id, "to", value)
+                cur.execute("UPDATE tournaments SET draw_id = ? WHERE id = ?", (value if value != "" else None, row_id))    
 
         conn.commit()
         conn.close()

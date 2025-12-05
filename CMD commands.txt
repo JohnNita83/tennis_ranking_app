@@ -22,3 +22,6 @@ git push origin main
 
 Link to app:
 https://tennis-ranking-app.onrender.com/
+
+Restore files to the last commit stage (discard local changes)
+git checkout -- .

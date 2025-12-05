@@ -9,6 +9,27 @@
     .table-drag-container:active {
       cursor: grabbing;
     }
+    @media (max-width: 600px) {
+      .table-tour td:nth-child(5),
+      .table-responsive th:nth-child(5) {
+        position: sticky;
+        left: 0;
+        max-width: 200px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .table-tour {
+        overflow-y: auto; 
+        max-height: 500px; 
+      }
+      .table-tour thead th {
+        position: sticky;
+        top: 0;
+        background: #e9ecef;
+        z-index: 5;
+      }
+    }
   </style>
 </head>
 <body>
@@ -197,7 +218,7 @@
 
       <h3>{{ player_name }} – {{ age_group }}</h3>
       
-      <div class="table-responsive table-drag-container" style="overflow-x: auto; white-space: nowrap;">
+      <div class="table-responsive table-tour table-drag-container" style="overflow-x: auto; white-space: nowrap;">
         <table class="table table-sm table-striped align-middle">
           <thead class="table-light">
             <tr>
@@ -219,6 +240,8 @@
               <th>Lost</th>
               <th>Mts</th>
               <th>Event</th>
+              <th>Link</th>
+              <th>Draw</th>
               <th>Link</th>
             </tr>
           </thead>
@@ -363,6 +386,23 @@
                   <a href="{{ url_for('entries', tournament_id=r.tournament_id, event_id=r.event_id) }}" style="text-decoration: none; color: green;">⇲</a>
                 {% endif %}
               </td>
+              <td style="font-size: .875rem;">
+                {% if not r.is_international %}
+                  <input type="number" name="draw_{{ r.id }}" value="{{ r.draw_id or '' }}"
+                        style="width:auto; max-width:40px;">
+                {% else %}
+                
+                {% endif %}
+              </td>
+              <td style="font-size: 1.5rem; text-align: center;">
+              {% if r.draw_id %}
+                <a href="https://ti.tournamentsoftware.com/tournament/{{ r.tournament_id }}/draw/{{ r.draw_id }}" target="_blank" style="text-decoration: none; color: green;">
+                  ⇲
+                </a>
+              {% else %}
+              
+              {% endif %}
+            </td>
             </tr>
             {% endfor %}
           </tbody>
