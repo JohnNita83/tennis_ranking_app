@@ -10,8 +10,13 @@
       cursor: grabbing;
     }
     @media (max-width: 600px) {
+      .table-responsive td:first-child,
+      .table-responsive th:first-child {
+        position: sticky;
+        left: 0;
+      }
       .table-tour td:nth-child(5),
-      .table-responsive th:nth-child(5) {
+      .table-tour th:nth-child(5) {
         position: sticky;
         left: 0;
         max-width: 200px;
