@@ -20,6 +20,9 @@ git merge dev
 # Push updated main back to GitHub
 git push origin main
 
+# Switch back to dev
+git checkout dev
+
 Link to app:
 https://tennis-ranking-app.onrender.com/
 
