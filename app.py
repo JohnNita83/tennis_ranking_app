@@ -1380,14 +1380,14 @@ def entries(tournament_id):
     rankings_df.columns = [c.strip().lower().replace(" ", "_") for c in rankings_df.columns]
     rankings_df["player_norm"] = rankings_df["player"].astype(str).apply(normalize_name)
 
-    # Convert rank to numeric
+    # Convert rank to numeric helper
     rankings_df["rank_num"] = pd.to_numeric(rankings_df["rank"], errors="coerce")
 
-    # ✅ Fetch tournament_name and draw_id from tournaments table
+    # ✅ Fetch tournament_name, draw_id, and age_group from tournaments table
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
-        "SELECT close_date, tournament_name, draw_id FROM tournaments WHERE tournament_id = ?",
+        "SELECT close_date, tournament_name, draw_id, age_group FROM tournaments WHERE tournament_id = ?",
         (tournament_id,)
     )
     row = cur.fetchone()
@@ -1396,15 +1396,15 @@ def entries(tournament_id):
     close_date = row["close_date"] if row else None
     tournament_name = row["tournament_name"] if row else ""
     draw_id = row["draw_id"] if row else None
+    tournament_age_group = row["age_group"] if row else None
 
+    # Decide target week
     today = datetime.utcnow().date()
     if close_date:
         close_date_obj = datetime.fromisoformat(close_date).date()
         if today < close_date_obj:
-            # Use latest week
             target_week = rankings_df["week"].max()
         else:
-            # Use the week of the close date
             week_num = close_date_obj.isocalendar()[1]
             year = close_date_obj.isocalendar()[0]
             target_week = f"{week_num}-{year}"
@@ -1413,25 +1413,41 @@ def entries(tournament_id):
 
     selected_rankings = rankings_df[rankings_df["week"] == target_week].copy()
 
-    # For each player_norm, keep the lowest rank across all age groups
-    best_rankings = (
+    # Step 1: rankings for this tournament's age_group
+    if tournament_age_group:
+        age_group_rankings = selected_rankings[selected_rankings["agegroup"] == tournament_age_group]
+    else:
+        age_group_rankings = pd.DataFrame()
+
+    # Step 2: best rank across all age groups (keep all columns!)
+    best_rankings_all = (
         selected_rankings.loc[selected_rankings.groupby("player_norm")["rank_num"].idxmin()]
         .reset_index(drop=True)
     )
 
-    # Drop duplicate player column before merge
-    if "player" in best_rankings.columns:
-        best_rankings = best_rankings.drop(columns=["player"])
+    # Merge entries with age_group rankings first
+    merged_df = entries_df.merge(age_group_rankings, on="player_norm", how="left", suffixes=("", "_age"))
 
-    # Merge on player_norm only
-    merged_df = entries_df.merge(best_rankings, on="player_norm", how="left")
+    # Merge with best across all age groups (keep all columns with suffix)
+    merged_df = merged_df.merge(best_rankings_all, on="player_norm", how="left", suffixes=("", "_best"))
 
-    # Fill missing ranks with 999
+    # Choose rank and metadata: prefer age_group, else best, else defaults
+    def choose_value(row, col):
+        if pd.notna(row.get(col)):
+            return row[col]
+        elif pd.notna(row.get(f"{col}_best")):
+            return row[f"{col}_best"]
+        else:
+            if col == "rank":
+                return 999
+            return "N/A"
+
+    for col in ["rank", "agegroup", "wtn", "ranking_points", "total_points",
+                "tournaments", "avg_points", "province", "year_of_birth"]:
+        merged_df[col] = merged_df.apply(lambda r: choose_value(r, col), axis=1)
+
+    # Ensure rank is numeric for sorting
     merged_df["rank"] = pd.to_numeric(merged_df["rank"], errors="coerce").fillna(999).astype(int)
-
-    # Debug check
-    print("Merged columns:", merged_df.columns.tolist())
-    print(merged_df.head())
 
     # Clean Seed column: replace NaN with empty string
     if "Seed" in merged_df.columns:
@@ -1446,8 +1462,73 @@ def entries(tournament_id):
         if col in merged_df.columns:
             merged_df[col] = merged_df[col].fillna("N/A")
 
-    # ✅ Apply your custom sort
-    merged_df = sort_entries(merged_df)
+    # ✅ Define custom sort: Maindraw → tournament age group → rank asc; Then Qualification > Reserve > Exclude
+    merged_df["draw_lower"] = merged_df["Draw"].astype(str).str.lower()
+    merged_df["draw_priority"] = np.select(
+        [
+            merged_df["draw_lower"].str.contains("maindraw"),
+            merged_df["draw_lower"].str.contains("qualification"),
+            merged_df["draw_lower"].str.contains("reserve"),
+            merged_df["draw_lower"].str.contains("exclude"),
+        ],
+        [1, 2, 3, 4],
+        default=5
+    )
+    merged_df["orig_idx"] = range(len(merged_df))
+
+    def sort_entries(df, tournament_age_group):
+        # Maindraw: tournament age group first, then rank asc
+        maindraw = df[df["draw_priority"] == 1].copy()
+        maindraw["is_tournament_age"] = maindraw["agegroup"].eq(tournament_age_group)
+        maindraw = maindraw.sort_values(
+            by=["is_tournament_age", "rank", "orig_idx"],
+            ascending=[False, True, True],
+            kind="mergesort"
+        )
+
+        # Qualification: sort by rank asc
+        qualification = df[df["draw_priority"] == 2].copy()
+        qualification = qualification.sort_values(
+            by=["rank", "orig_idx"], ascending=[True, True], kind="mergesort"
+        )
+
+        # Reserve: split into numbered vs plain
+        reserve = df[df["draw_priority"] == 3].copy()
+
+        # Extract number at end of "reserve list X" if present
+        def extract_reserve_number(draw_str):
+            m = re.search(r"reserve\s*list\s*(\d+)$", str(draw_str).lower())
+            return int(m.group(1)) if m else None
+
+        reserve["reserve_num"] = reserve["Draw"].apply(extract_reserve_number)
+
+        # Numbered reserves first, sorted ascending by number
+        reserve_numbered = reserve[reserve["reserve_num"].notna()].copy()
+        reserve_numbered = reserve_numbered.sort_values(
+            by=["reserve_num", "orig_idx"], ascending=[True, True], kind="mergesort"
+        )
+
+        # Plain reserves (no number) after, sorted alphabetically by Draw
+        reserve_plain = reserve[reserve["reserve_num"].isna()].copy()
+        reserve_plain = reserve_plain.sort_values(
+            by=["Draw", "orig_idx"], ascending=[True, True], kind="mergesort"
+        )
+
+        # Concatenate
+        reserve = pd.concat([reserve_numbered, reserve_plain])
+
+        # Exclude: keep original order
+        exclude = df[df["draw_priority"] == 4].copy()
+        exclude = exclude.sort_values(by=["orig_idx"], kind="mergesort")
+
+        # Others: keep original order
+        others = df[df["draw_priority"] == 5].copy()
+        others = others.sort_values(by=["orig_idx"], kind="mergesort")
+
+        return pd.concat([maindraw, qualification, reserve, exclude, others]).reset_index(drop=True)
+
+    # ✅ Apply custom sort
+    merged_df = sort_entries(merged_df, tournament_age_group)
 
     entries = merged_df.to_dict(orient="records")
 
@@ -1457,7 +1538,8 @@ def entries(tournament_id):
         event_id=event_id,
         entries=entries,
         tournament_name=tournament_name,
-        draw_id=draw_id   # 👈 now available in template
+        draw_id=draw_id,
+        tournament_age_group=tournament_age_group,
     )
 
 

@@ -46,7 +46,13 @@
         <td>{{ entry.player }}</td>
         <td style="text-align: center;">{{ entry.Seed }}</td>
         <td style="text-align: center;">{{ entry.rank }}</td>
-        <td style="text-align: center;">{{ entry.agegroup }}</td>
+        <td style="text-align: center;">
+          {% if entry.agegroup == tournament_age_group %}
+            <span class="text-success">{{ entry.agegroup }}</span>
+          {% else %}
+            <span class="text-warning">{{ entry.agegroup }}</span>
+          {% endif %}
+        </td>
         <td style="text-align: center;">{{ entry.wtn }}</td>
         <td style="text-align: center;">{{ entry.ranking_points }}</td>
         <td style="text-align: center;">{{ entry.year_of_birth }}</td>
