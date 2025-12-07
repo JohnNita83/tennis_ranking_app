@@ -270,6 +270,12 @@ def ensure_tournaments_table():
     except sqlite3.OperationalError:
         # Column already exists
         pass
+    # Add player_id column if missing
+    try:
+        cur.execute("ALTER TABLE tournaments ADD COLUMN player_id INTEGER")
+    except sqlite3.OperationalError:
+        # Column already exists
+        pass
 
     conn.commit()
     conn.close()
@@ -370,6 +376,36 @@ def get_week_label_for_date(d: date) -> str:
     return f"{week_num}-{year}"
 
 
+def fetch_singles_stats(tournament_id: str, player_id: str):
+    """Fetch Singles stats (won/lost) from tournamentsoftware page."""
+    import requests
+    from bs4 import BeautifulSoup
+
+    url = f"https://ti.tournamentsoftware.com/tournament/{tournament_id}/player/{player_id}"
+    headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
+    resp = requests.get(url, headers=headers)
+    resp.raise_for_status()
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+    stats_table = soup.select_one(".module.module--card .table--new")
+    if not stats_table:
+        return None, None
+
+    for row in stats_table.select("tbody tr"):
+        cells = [td.get_text(strip=True) for td in row.select("td")]
+        if cells and cells[0].lower() == "singles":
+            wl_text = cells[2]  # e.g. "2-3 (40%)"
+            wl_part = wl_text.split()[0] if wl_text else ""
+            if "-" in wl_part:
+                try:
+                    won, lost = wl_part.split("-")
+                    return int(won), int(lost)
+                except ValueError:
+                    return None, None
+    return None, None
+
+
+
 from datetime import datetime, timedelta
 from collections import defaultdict
 import sqlite3
@@ -395,6 +431,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
     db_rows = cur.fetchall()
     conn.close()
 
+    
     def parse_date_safe(s):
         try:
             return datetime.fromisoformat(s).date() if s else None
@@ -424,6 +461,13 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
 
         won = r["won"] if r["won"] is not None else 0
         lost = r["lost"] if r["lost"] is not None else 0
+
+        # ✅ If domestic tournament (has tournament_id) and player_id, fetch Singles stats
+        if r["tournament_id"] and not r["is_international"] and r["player_id"]:
+            singles_won, singles_lost = fetch_singles_stats(r["tournament_id"], r["player_id"])
+            if singles_won is not None and singles_lost is not None:
+                won, lost = singles_won, singles_lost
+
         total_won += won
         total_lost += lost
 
@@ -488,6 +532,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
             "is_international": r["is_international"],
             "event_id": r["event_id"],
             "draw_id": r["draw_id"],
+            "player_id": r["player_id"],
             "is_top6": False,
         }
         rows.append(row)
@@ -1059,7 +1104,11 @@ def tournaments():
             elif key.startswith("draw_"):
                 row_id = key.split("_")[1]
                 print("Updating draw_id for row", row_id, "to", value)
-                cur.execute("UPDATE tournaments SET draw_id = ? WHERE id = ?", (value if value != "" else None, row_id))    
+                cur.execute("UPDATE tournaments SET draw_id = ? WHERE id = ?", (value if value != "" else None, row_id))
+            elif key.startswith("player_"):
+                row_id = key.split("_")[1]
+                print("Updating player_id for row", row_id, "to", value)
+                cur.execute("UPDATE tournaments SET player_id = ? WHERE id = ?", (value if value != "" else None, row_id))    
 
         conn.commit()
         conn.close()
@@ -1542,6 +1591,100 @@ def entries(tournament_id):
         tournament_age_group=tournament_age_group,
     )
 
+from bs4 import BeautifulSoup
+
+@app.route("/matches/<tournament_id>/<player_id>")
+def matches(tournament_id, player_id):
+    singles_won, singles_lost = None, None
+
+    url = f"https://ti.tournamentsoftware.com/tournament/{tournament_id}/player/{player_id}"
+    headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
+    resp = requests.get(url, headers=headers)
+    resp.raise_for_status()
+
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    # --- Parse matches ---
+    matches = []
+    for match_div in soup.select(".match-group__item .match"):
+        draw = match_div.select_one(".match__header-title .nav-link__value")
+        draw_name = draw.get_text(strip=True) if draw else ""
+
+        players = [a.get_text(strip=True) for a in match_div.select(".match__row-title-value-content a")]
+        statuses = [s.get_text(strip=True) for s in match_div.select(".match__status")]
+        scores = []
+        for ul in match_div.select(".match__result ul.points"):
+            scores.append([li.get_text(strip=True) for li in ul.select("li")])
+
+        date_time = match_div.select_one(".icon-clock + .nav-link__value")
+        court = match_div.select_one(".icon-marker + .nav-link__value")
+
+        h2h_link = match_div.select_one(".match__btn-h2h")
+        h2h_url = h2h_link["href"] if h2h_link else ""
+
+        matches.append({
+            "draw": draw_name,
+            "players": players,
+            "statuses": statuses,
+            "scores": scores,
+            "date_time": date_time.get_text(strip=True) if date_time else "",
+            "court": court.get_text(strip=True) if court else "",
+            "h2h_url": h2h_url
+        })
+
+    # --- Parse statistics table (all columns) ---
+    stats = []
+    stats_table = soup.select_one(".module.module--card .table--new")
+    if stats_table:
+        for row in stats_table.select("tbody tr"):
+            cells = []
+            for idx, td in enumerate(row.select("td")):
+                cell_text = td.get_text(strip=True)
+                percent = None
+                if idx == 2:  # W column
+                    bar = td.select_one(".progress-bar__line")
+                    if bar and bar.has_attr("style"):
+                        width = bar["style"].replace("width:", "").replace("%;", "").replace("%", "").strip()
+                        try:
+                            percent = int(width)
+                        except ValueError:
+                            percent = None
+                cells.append({"text": cell_text, "percent": percent})
+            if cells:
+                stats.append(cells)
+
+    # --- Fetch Singles stats separately ---
+    singles_won, singles_lost = fetch_singles_stats(tournament_id, player_id)
+
+    # --- Update tournaments table with Won/Lost from Singles row ---
+    if singles_won is not None and singles_lost is not None:
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "UPDATE tournaments SET won=?, lost=? WHERE tournament_id=?",
+            (singles_won, singles_lost, tournament_id)
+        )
+        conn.commit()
+        conn.close()
+
+    # --- Get tournament_name from DB ---
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT tournament_name FROM tournaments WHERE tournament_id=?", (tournament_id,))
+    row = cur.fetchone()
+    conn.close()
+    tournament_name = row[0] if row else f"Tournament {tournament_id}"
+
+    return render_template(
+        "matches.html",
+        matches=matches,
+        stats=stats,
+        tournament_id=tournament_id,
+        tournament_name=tournament_name,   # ✅ pass name to template
+        player_id=player_id,
+        singles_won=singles_won,
+        singles_lost=singles_lost
+    )
 
     
 @app.route("/player")
@@ -1686,6 +1829,7 @@ def player():
         grand_total=tournament_data["grand_total"],
         cat_ranking_points=tournament_data["cat_ranking_points"],
         latest_rank=tournament_data["latest_rank"],
+        latest_week=tournament_data["latest_week"],
         best_rank=tournament_data["best_rank"],
         best_rank_week=tournament_data["best_rank_week"],
     )

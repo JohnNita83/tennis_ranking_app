@@ -54,7 +54,8 @@
       </div>
     </form>
     <div class="alert alert-info mb-3 text-muted">
-      Current ranking: <strong>{{ latest_rank if latest_rank else "&mdash;"|safe }}</strong><br>
+      Current ranking: <strong>{{ latest_rank if latest_rank else "&mdash;"|safe }}</strong>
+      {% if latest_week %} ({{ latest_week }}){% endif %}<br>
       Best ranking: <strong>{{ best_rank if best_rank else "&mdash;"|safe }}</strong>
       {% if best_rank_week %} on week <strong>{{ best_rank_week }}</strong>{% endif %}
     </div>

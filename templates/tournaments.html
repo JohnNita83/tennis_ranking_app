@@ -9,6 +9,12 @@
     .table-drag-container:active {
       cursor: grabbing;
     }
+    .table-tour-desk {
+      .table-tour td:nth-child(5),
+      .table-tour th:nth-child(5) {
+        position: sticky;
+        left: 0;
+    }
     @media (max-width: 600px) {
       .table-responsive td:first-child,
       .table-responsive th:first-child {
@@ -224,7 +230,7 @@
       <h3>{{ player_name }} – {{ age_group }}</h3>
       
       <div class="table-responsive table-tour table-drag-container" style="overflow-x: auto; white-space: nowrap;">
-        <table class="table table-sm table-striped align-middle">
+        <table class="table-tour-desk table table-sm table-striped align-middle">
           <thead class="table-light">
             <tr>
               <th></th>
@@ -245,9 +251,11 @@
               <th>Lost</th>
               <th>Mts</th>
               <th>Event</th>
-              <th>Link</th>
+              <th>Ent.</th>
               <th>Draw</th>
-              <th>Link</th>
+              <th>View</th>
+              <th>Player</th>
+              <th>Mts.</th>
             </tr>
           </thead>
           <tbody>
@@ -407,7 +415,17 @@
               {% else %}
               
               {% endif %}
-            </td>
+              </td>
+              <td style="font-size: .875rem;">
+                <input type="number" name="player_{{ r.id }}" value="{{ r.player_id or '' }}"
+                      style="width:auto; max-width:45px;">
+              </td>
+              <td style="font-size: 1.5rem; text-align: center;">
+                {% if r.player_id %}
+                  <a href="{{ url_for('matches', tournament_id=r.tournament_id, player_id=r.player_id) }}"
+                    style="text-decoration: none; color: green;">⇲</a>
+                {% endif %}
+              </td>
             </tr>
             {% endfor %}
           </tbody>

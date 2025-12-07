@@ -1,0 +1,92 @@
+{% extends "base.html" %}
+{% block content %}
+
+<h2 style="padding-top:30px;">Matches for Tournament</h2>
+<h2 style="padding-bottom:30px;"" class="fw-bold text-success">{{ tournament_name }}</h2>
+
+<!-- Matches Table -->
+<div class="table-responsive">
+  <table class="table table-sm table-striped">
+    <thead>
+      <tr>
+        <th>Draw</th>
+        <th>Players</th>
+        <th style="text-align: center;">Result</th>
+        <th style="text-align: center;">Score</th>
+        <th>Date/Time</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for m in matches %}
+      <tr>
+        <td>{{ m.draw }}</td>
+        <td>{{ m.players|join(' VS ') }}</td>
+        <td style="text-align: center;">
+        {% for status in m.statuses %}
+            {% if status == "W" %}
+            <span class="text-success fw-bold">{{ status }}</span>
+            {% elif status == "L" %}
+            <span class="text-danger fw-bold">{{ status }}</span>
+            {% else %}
+            {{ status }}
+            {% endif %}
+            {% if not loop.last %}, {% endif %}
+        {% endfor %}
+        </td>
+        <td style="text-align: center;">
+          {% for set in m.scores %}
+            {{ set|join(' - ') }}<br>
+          {% endfor %}
+        </td>
+        <td>{{ m.date_time }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- Stats Table -->
+<div class="module module--card mt-4">
+  <div class="module__banner">
+    <h3 class="module__title">
+      <span class="module__title-main">Statistics</span>
+    </h3>
+  </div>
+  <div class="module__content">
+    <div class="module-container">
+      <table class="table table-sm table-striped">
+        <thead>
+          <tr>
+            <th></th>
+            <th>Matches</th>
+            <th>W-L</th>
+            <th>Sets</th>
+            <th>Games</th>
+            <th>W/O</th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for row in stats %}
+        <tr>
+          {% for cell in row %}
+            {% if loop.index == 3 and cell.percent is not none %}
+              {% if cell.percent < 50 %}
+                <td class="text-danger fw-bold">{{ cell.text }} ({{ cell.percent }}%)</td>
+              {% elif cell.percent == 50 %}
+                <td class="text-warning fw-bold">{{ cell.text }} ({{ cell.percent }}%)</td>
+              {% elif cell.percent > 50 %}
+                <td class="text-success fw-bold">{{ cell.text }} ({{ cell.percent }}%)</td>
+              {% endif %}
+            {% else %}
+              <td>{{ cell.text }}</td>
+            {% endif %}
+          {% endfor %}
+        </tr>
+        {% endfor %}
+      </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
