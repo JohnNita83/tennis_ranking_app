@@ -9,12 +9,16 @@
     .table-drag-container:active {
       cursor: grabbing;
     }
-    .table-tour-desk {
-      .table-tour td:nth-child(5),
-      .table-tour th:nth-child(5) {
+    .table-tour {
+        overflow-y: auto; 
+        max-height: 90vh; 
+      }
+      .table-tour thead th {
         position: sticky;
-        left: 0;
-    }
+        top: 0;
+        background: #e9ecef;
+        z-index: 5;
+      }
     @media (max-width: 600px) {
       .table-responsive td:first-child,
       .table-responsive th:first-child {
@@ -32,7 +36,7 @@
       }
       .table-tour {
         overflow-y: auto; 
-        max-height: 500px; 
+        max-height: 90vh;; 
       }
       .table-tour thead th {
         position: sticky;
@@ -105,6 +109,13 @@
     </form>
   </div>
 </div>
+
+<div class="alert alert-info mb-3 text-muted">
+      Current ranking: <strong>{{ latest_rank if latest_rank else "&mdash;"|safe }}</strong>
+      {% if latest_week %} ({{ latest_week }}){% endif %}<br>
+      Best ranking: <strong>{{ best_rank if best_rank else "&mdash;"|safe }}</strong>
+      {% if best_rank_week %} on week <strong>{{ best_rank_week }}</strong>{% endif %}
+    </div>
 
 <div class="row mb-3">
   <!-- Summary: Won/Lost/Matches -->
@@ -229,8 +240,8 @@
 
       <h3>{{ player_name }} – {{ age_group }}</h3>
       
-      <div class="table-responsive table-tour table-drag-container" style="overflow-x: auto; white-space: nowrap;">
-        <table class="table-tour-desk table table-sm table-striped align-middle">
+      <div class="table-tour table-responsive table-drag-container" style="overflow-x: auto; white-space: nowrap;">
+        <table class="table table-sm table-striped align-middle">
           <thead class="table-light">
             <tr>
               <th></th>

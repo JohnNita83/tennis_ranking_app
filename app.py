@@ -931,7 +931,12 @@ def rankings():
             )
             row2 = cur.fetchone()
             if row2 and row2["UpdatedAt"]:
-                updated_at = row2["UpdatedAt"]
+                raw_updated = row2["UpdatedAt"]
+                try:
+                    dt = datetime.fromisoformat(raw_updated)
+                    updated_at = f"{dt.date()} Time: {dt.time()}"
+                except Exception:
+                    updated_at = raw_updated
         except Exception:
             updated_at = None
 
@@ -1193,6 +1198,8 @@ def tournaments():
         point_columns=POINT_COLUMNS,
         latest_week=view["latest_week"],
         latest_rank=view["latest_rank"], 
+        best_rank=view["best_rank"],
+        best_rank_week=view["best_rank_week"],
     )
    
 @app.route("/tournaments/delete/<int:row_id>", methods=["POST"])
@@ -1769,10 +1776,12 @@ def player():
         names = [r["tournament_name"] for r in sorted_tournaments]
         points = [r["points"] for r in sorted_tournaments]
 
+        y_vals = list(range(1, len(points) + 1))
+
         bar_fig = go.Figure(
             data=[go.Bar(
                 x=points,
-                y=list(range(1, len(points)+1)),
+                y=y_vals,
                 orientation="h",
                 marker=dict(color="green"),
                 text=names,
@@ -1781,8 +1790,15 @@ def player():
             layout=go.Layout(
                 title=f"Top 6 Tournaments by Points ({age_group})",
                 xaxis=dict(title="Points"),
-                yaxis=dict(title="Tournaments", autorange="reversed"),  # ✅ flip so highest at bottom
-                margin=dict(l=40, r=20, t=50, b=80),
+                yaxis=dict(
+                    title="Rank",
+                    tickmode="array",
+                    tickvals=y_vals,
+                    # ✅ reverse the tick labels manually
+                    ticktext=[str(i) for i in reversed(y_vals)],
+                    autorange="reversed"   # keep bars sorted with best at bottom
+                ),
+                margin=dict(l=60, r=20, t=50, b=80),
                 height=400
             )
         )

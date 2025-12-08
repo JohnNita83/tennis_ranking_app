@@ -1,5 +1,27 @@
 {% extends "base.html" %}
 {% block content %}
+<head>
+  <style>
+    @media (max-width: 600px) {
+          .table-responsive td:first-child,
+          .table-responsive th:first-child {
+            position: sticky;
+            left: 0;
+          }
+          .table-responsive {
+            overflow-y: auto; 
+            max-height: 500px; 
+          }
+          .table-responsive thead th {
+            position: sticky;
+            top: 0;
+            background: #e9ecef;
+            z-index: 5;
+          }
+        }
+  </style>
+</head>
+<body>
 <div class="card shadow-sm">
   <div class="card-body">
     <h5 class="card-title mb-3">Ranking Points Table</h5>
@@ -52,4 +74,5 @@
     </form>
   </div>
 </div>
+</body>
 {% endblock %}
