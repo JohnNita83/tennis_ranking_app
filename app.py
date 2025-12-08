@@ -431,6 +431,49 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
     db_rows = cur.fetchall()
     conn.close()
 
+    def fetch_event_wl_stats(tournament_id: str, player_id: str):
+        import requests
+        from bs4 import BeautifulSoup
+
+        url = f"https://ti.tournamentsoftware.com/tournament/{tournament_id}/player/{player_id}"
+        headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
+        resp = requests.get(url, headers=headers)
+        resp.raise_for_status()
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+        stats_table = soup.select_one(".module.module--card .table--new")
+        result = {"singles": (0, 0), "doubles": (0, 0)}
+
+        if not stats_table:
+            print(f"[DEBUG] No stats table found for {tournament_id}/{player_id}")
+            return result
+
+        def parse_wl(text: str):
+            try:
+                wl_part = text.split()[0]
+                if "-" in wl_part:
+                    w, l = wl_part.split("-")
+                    return int(w), int(l)
+            except Exception as e:
+                print(f"[DEBUG] parse_wl error: {e} on text={text}")
+            return 0, 0
+
+        for row in stats_table.select("tbody tr"):
+            tds = [td.get_text(strip=True) for td in row.select("td")]
+            print(f"[DEBUG] Row cells: {tds}")  # <-- see what’s being parsed
+            if not tds or len(tds) < 3:
+                continue
+            label = tds[0].lower()
+            wl_text = tds[2]
+            if label == "singles":
+                result["singles"] = parse_wl(wl_text)
+            elif label == "doubles":
+                result["doubles"] = parse_wl(wl_text)
+
+        print(f"[DEBUG] Parsed stats for {tournament_id}/{player_id}: {result}")
+        return result
+
+
     
     def parse_date_safe(s):
         try:
@@ -462,14 +505,28 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         won = r["won"] if r["won"] is not None else 0
         lost = r["lost"] if r["lost"] is not None else 0
 
-        # ✅ If domestic tournament (has tournament_id) and player_id, fetch Singles stats
-        if r["tournament_id"] and not r["is_international"] and r["player_id"]:
-            singles_won, singles_lost = fetch_singles_stats(r["tournament_id"], r["player_id"])
-            if singles_won is not None and singles_lost is not None:
-                won, lost = singles_won, singles_lost
+        singles_won = singles_lost = doubles_won = doubles_lost = 0
 
+        if r["tournament_id"] and not r["is_international"] and r["player_id"]:
+            # Domestic: scrape stats
+            wl_stats = fetch_event_wl_stats(r["tournament_id"], r["player_id"])
+            singles_won, singles_lost = wl_stats.get("singles", (0, 0))
+            doubles_won, doubles_lost = wl_stats.get("doubles", (0, 0))
+            won, lost = singles_won, singles_lost
+        else:
+            # International: fall back to manually entered DB values
+            singles_won = r["won"] if r["won"] is not None else 0
+            singles_lost = r["lost"] if r["lost"] is not None else 0
+            won, lost = singles_won, singles_lost
+
+
+        # Totals: decide if you want singles only or both
         total_won += won
         total_lost += lost
+
+        # Debug prints
+        print(f"[DEBUG] Tournament {r['tournament_name']} -> Singles {singles_won}-{singles_lost}, Doubles {doubles_won}-{doubles_lost}")
+
 
         if cat_code in cat_counts:
             cat_counts[cat_code] += 1
@@ -525,9 +582,15 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
             "rank": rank_value,
             "diff": diff,
             "arrow": arrow,
-            "won": won,
-            "lost": lost,
-            "matches": matches,
+            "won": won,   # singles only
+            "lost": lost, # singles only
+            "matches": won + lost,
+            "singles_won": singles_won,
+            "singles_lost": singles_lost,
+            "singles_total": singles_won + singles_lost,
+            "doubles_won": doubles_won,
+            "doubles_lost": doubles_lost,
+            "doubles_total": doubles_won + doubles_lost,
             "tournament_id": r["tournament_id"],
             "is_international": r["is_international"],
             "event_id": r["event_id"],
@@ -661,6 +724,52 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
                 best_rank_week = wk
                 break
 
+    # --- Build global stat_summary across all tournaments ---
+    def pct(part, total):
+        return round(part / total * 100, 1) if total > 0 else 0.0
+
+    # For each row, prefer scraped singles_won/lost if present,
+    # otherwise fall back to manually entered won/lost.
+    singles_won_total = sum(
+        r.get("singles_won", r.get("won", 0)) for r in rows
+    )
+    singles_lost_total = sum(
+        r.get("singles_lost", r.get("lost", 0)) for r in rows
+    )
+
+    # Doubles only comes from scraping, so keep as-is
+    doubles_won_total = sum(r.get("doubles_won", 0) for r in rows)
+    doubles_lost_total = sum(r.get("doubles_lost", 0) for r in rows)
+
+    total_won_all = singles_won_total + doubles_won_total
+    total_lost_all = singles_lost_total + doubles_lost_total
+
+    stat_summary = {
+        "singles": {
+            "won": singles_won_total,
+            "lost": singles_lost_total,
+            "won_pct": pct(singles_won_total, singles_won_total + singles_lost_total),
+            "lost_pct": pct(singles_lost_total, singles_won_total + singles_lost_total),
+            "total": singles_won_total + singles_lost_total,
+        },
+        "doubles": {
+            "won": doubles_won_total,
+            "lost": doubles_lost_total,
+            "won_pct": pct(doubles_won_total, doubles_won_total + doubles_lost_total),
+            "lost_pct": pct(doubles_lost_total, doubles_won_total + doubles_lost_total),
+            "total": doubles_won_total + doubles_lost_total,
+        },
+        "total": {
+            "won": total_won_all,
+            "lost": total_lost_all,
+            "won_pct": pct(total_won_all, total_won_all + total_lost_all),
+            "lost_pct": pct(total_lost_all, total_won_all + total_lost_all),
+            "total": total_won_all + total_lost_all,
+        },
+    }
+
+
+
     return {
         "rows": rows,
         "totals": {
@@ -681,6 +790,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         "best_rank_week": best_rank_week,
         "category_summary": filtered_summary,
         "grand_total": grand_total,
+        "stat_summary": stat_summary,
     }
 
 
@@ -1200,6 +1310,7 @@ def tournaments():
         latest_rank=view["latest_rank"], 
         best_rank=view["best_rank"],
         best_rank_week=view["best_rank_week"],
+        stat_summary=view["stat_summary"],
     )
    
 @app.route("/tournaments/delete/<int:row_id>", methods=["POST"])
@@ -1602,6 +1713,7 @@ from bs4 import BeautifulSoup
 
 @app.route("/matches/<tournament_id>/<player_id>")
 def matches(tournament_id, player_id):
+    # initialize singles stats
     singles_won, singles_lost = None, None
 
     url = f"https://ti.tournamentsoftware.com/tournament/{tournament_id}/player/{player_id}"
@@ -1682,15 +1794,69 @@ def matches(tournament_id, player_id):
     conn.close()
     tournament_name = row[0] if row else f"Tournament {tournament_id}"
 
+    # --- Build stat_summary: Singles, Doubles, Total ---
+    def extract_wl(cells):
+        try:
+            wl_text = cells[2]["text"]  # e.g. "35-28 (55.6%)"
+            wl_part = wl_text.split()[0] if wl_text else ""
+            if "-" in wl_part:
+                won, lost = map(int, wl_part.split("-"))
+                return won, lost
+        except Exception:
+            pass
+        return 0, 0
+
+    singles_won_summary, singles_lost_summary = 0, 0
+    doubles_won_summary, doubles_lost_summary = 0, 0
+
+    for row in stats:
+        label = row[0]["text"].lower()
+        if label == "singles":
+            singles_won_summary, singles_lost_summary = extract_wl(row)
+        elif label == "doubles":
+            doubles_won_summary, doubles_lost_summary = extract_wl(row)
+
+    # Compute totals
+    total_won = singles_won_summary + doubles_won_summary
+    total_lost = singles_lost_summary + doubles_lost_summary
+
+    def pct(part, total):
+        return round(part / total * 100, 1) if total > 0 else 0.0
+
+    stat_summary = {
+        "singles": {
+            "won": singles_won_summary,
+            "lost": singles_lost_summary,
+            "won_pct": pct(singles_won_summary, singles_won_summary + singles_lost_summary),
+            "lost_pct": pct(singles_lost_summary, singles_won_summary + singles_lost_summary),
+            "total": singles_won_summary + singles_lost_summary
+        },
+        "doubles": {
+            "won": doubles_won_summary,
+            "lost": doubles_lost_summary,
+            "won_pct": pct(doubles_won_summary, doubles_won_summary + doubles_lost_summary),
+            "lost_pct": pct(doubles_lost_summary, doubles_won_summary + doubles_lost_summary),
+            "total": doubles_won_summary + doubles_lost_summary
+        },
+        "total": {
+            "won": total_won,
+            "lost": total_lost,
+            "won_pct": pct(total_won, total_won + total_lost),
+            "lost_pct": pct(total_lost, total_won + total_lost),
+            "total": total_won + total_lost
+        }
+    }
+
     return render_template(
         "matches.html",
         matches=matches,
         stats=stats,
         tournament_id=tournament_id,
-        tournament_name=tournament_name,   # ✅ pass name to template
+        tournament_name=tournament_name,
         player_id=player_id,
         singles_won=singles_won,
-        singles_lost=singles_lost
+        singles_lost=singles_lost,
+        stat_summary=stat_summary
     )
 
     

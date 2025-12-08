@@ -119,7 +119,7 @@
 
 <div class="row mb-3">
   <!-- Summary: Won/Lost/Matches -->
-  <div class="col-12 col-lg-3 mb-3">
+  <div class="col-12 col-lg-4 mb-3">
     <div class="card shadow-sm">
       <div class="card-body">
         <h6 class="card-title mb-3">Match Summary</h6>
@@ -127,40 +127,36 @@
           <table class="table table-sm table-bordered table-striped mb-0 text-center align-middle">
             <thead class="table-light">
               <tr>
+                <th></th>
                 <th>Won</th>
+                <th>%</th>
                 <th>Lost</th>
-                <th>Matches</th>
+                <th>%</th>
+                <th>Mts</th>
               </tr>
             </thead>
+            {% if stat_summary %}
             <tbody>
+              {% for label in ["singles", "doubles", "total"] %}
               <tr>
-                <td class="text-success fw-bold">{{ totals.total_won }}</td>
-                <td class="text-danger fw-bold">{{ totals.total_lost }}</td>
-                <td class="fw-bold">{{ totals.total_matches }}</td>
+                <td>{{ label.capitalize() }}</td>
+                <td class="fw-bold text-success">{{ stat_summary[label].won }}</td>
+                <td class="text-success">{{ stat_summary[label].won_pct }}%</td>
+                <td class="fw-bold text-danger">{{ stat_summary[label].lost }}</td>
+                <td class="text-danger">{{ stat_summary[label].lost_pct }}%</td>
+                <td>{{ stat_summary[label].total }}</td>
               </tr>
-              <tr>
-                <td class="text-success">
-                  {{ "%.1f"|format(totals.won_pct) }}%
-                </td>
-                <td class="text-danger">
-                  {{ "%.1f"|format(totals.lost_pct) }}%
-                </td>
-                <td>%</td>
-              </tr>
+              {% endfor %}
             </tbody>
+            {% endif %}
           </table>
-          {% if latest_rank %}
-            <div class="fw-bold" style="text-align: center; padding-top: 10px; color:#0d6efd">
-              Current ranking ({{ latest_week }}): {{ latest_rank }}
-            </div>
-          {% endif %}
         </div>
       </div>
     </div>
   </div>
 
   <!-- Summary: Tournament categories count -->
-<div class="col-12 col-lg-9 mb-3">
+<div class="col-12 col-lg-8 mb-3">
   <div class="card shadow-sm">
     <div class="card-body">
       <h6 class="card-title mb-3">Tournaments by Category</h6>
@@ -272,7 +268,7 @@
           <tbody>
             {% for r in rows %}
             {% set min_rank = rows | map(attribute='rank') | reject('equalto', None) | min %}
-            <tr>
+            <tr class="{% if r.is_international %}table-warning{% endif %}">
               <td>
                 <form
                   method="post"
@@ -401,9 +397,7 @@
                 {% if not r.is_international %}
                   <input type="number" name="event_{{ r.id }}" value="{{ r.event_id or '' }}"
                         style="width:auto; max-width:40px;">
-                {% else %}
-                  -
-                {% endif %}
+                {% endif %}                
               </td>
               <td style="font-size: 1.5rem; text-align: center;">
                 {% if r.event_id %}
@@ -414,8 +408,6 @@
                 {% if not r.is_international %}
                   <input type="number" name="draw_{{ r.id }}" value="{{ r.draw_id or '' }}"
                         style="width:auto; max-width:40px;">
-                {% else %}
-                
                 {% endif %}
               </td>
               <td style="font-size: 1.5rem; text-align: center;">
@@ -423,13 +415,13 @@
                 <a href="https://ti.tournamentsoftware.com/tournament/{{ r.tournament_id }}/draw/{{ r.draw_id }}" target="_blank" style="text-decoration: none; color: green;">
                   ⇲
                 </a>
-              {% else %}
-              
               {% endif %}
               </td>
               <td style="font-size: .875rem;">
-                <input type="number" name="player_{{ r.id }}" value="{{ r.player_id or '' }}"
+                {% if not r.is_international %}
+                  <input type="number" name="player_{{ r.id }}" value="{{ r.player_id or '' }}"
                       style="width:auto; max-width:45px;">
+                {% endif %}      
               </td>
               <td style="font-size: 1.5rem; text-align: center;">
                 {% if r.player_id %}
