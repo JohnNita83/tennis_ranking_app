@@ -40,7 +40,7 @@ AGE_GROUPS = ["BS12", "BS14", "BS16", "BS18", "GS12", "GS14", "GS16", "GS18"]
 
 def get_db_connection():
     print("Using DB file:", DB_PATH)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -511,10 +511,28 @@ def fetch_singles_stats(tournament_id: str, player_id: str):
 
 def build_tournament_view(player_name: str, age_group: str) -> dict:
     ensure_tournaments_table()
-    point_columns = load_categories()
-    points_map = load_points_map(point_columns)
     rankings_map = load_player_rankings(player_name, age_group)
     categories = load_categories_by_type()
+    raw_categories = load_categories(include_deleted=False)
+    
+    # ✅ Sorting helpers for tournament categories
+    def _numeric_part(code: str) -> int:
+        digits = ''.join(ch for ch in code if ch.isdigit())
+        return int(digits) if digits else 0
+
+    def sort_by_numeric(items):
+        return sorted(items, key=lambda x: _numeric_part(x[0]))
+
+    # keep tuples (code, display_name)
+    domestic = [(r["code"], r["display_name"]) for r in raw_categories if r["type"] == "domestic"]
+    international = [(r["code"], r["display_name"]) for r in raw_categories if r["type"] == "international"]
+
+    domestic_sorted = sort_by_numeric(domestic)
+    international_sorted = sort_by_numeric(international)
+
+    point_columns = domestic_sorted + international_sorted
+
+    points_map = load_points_map(point_columns)
 
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
@@ -866,20 +884,8 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         },
     }
 
-    # ✅ Sorting helpers for category dropdown in tournaments table
-    def sort_domestic(cats):
-        # T100, T200, T500, T1000 → sort by the numeric part
-        return sorted(cats, key=lambda x: int(x[0][1:]))
-
-    def sort_international(cats):
-        # TE1, TP500, TP1000 → sort by the numeric part
-        return sorted(cats, key=lambda x: int(''.join(filter(str.isdigit, x[0])) or 0))
-
-    # ✅ Apply sorting before return
-    domestic_columns = sort_domestic(categories["domestic"])
-    international_columns = sort_international(categories["international"])
-
     
+        
     return {
         "rows": rows,
         "totals": {
@@ -902,8 +908,8 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         "category_summary": filtered_summary,
         "grand_total": grand_total,
         "stat_summary": stat_summary,
-        "domestic_columns": domestic_columns, 
-        "international_columns": international_columns
+        "domestic_columns": domestic_sorted,
+        "international_columns": international_sorted,
     }
 
 
@@ -1238,7 +1244,7 @@ def points():
         # items are (code, display_name) tuples
         return sorted(items, key=lambda x: _numeric_part(x[0]))
 
-    # Split by type
+    # keep tuples (code, display_name)
     domestic = [(r["code"], r["display_name"]) for r in raw_categories if r["type"] == "domestic"]
     international = [(r["code"], r["display_name"]) for r in raw_categories if r["type"] == "international"]
 
@@ -1248,6 +1254,8 @@ def points():
 
     # Merge in desired order for the points table
     point_columns = domestic_sorted + international_sorted
+
+    print("=== DEBUG point_columns ===", point_columns)
 
     points_map = load_points_map(point_columns)
 
