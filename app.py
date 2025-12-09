@@ -1,7 +1,7 @@
 import sqlite3
 from update_current_week import update_current_week as run_update
 from flask import Flask, render_template, request, redirect, url_for
-from flask_login import LoginManager, UserMixin, LoginManager, UserMixin, login_user, logout_user, login_required, current_user
+from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from pathlib import Path
 from datetime import datetime, date, timedelta
 from tournament_fetcher import fetch_tournament_details
@@ -38,27 +38,139 @@ DB_PATH = "rankings.db"
 # Age groups we support
 AGE_GROUPS = ["BS12", "BS14", "BS16", "BS18", "GS12", "GS14", "GS16", "GS18"]
 
-# Internal column names + display labels for points table
-POINT_COLUMNS = [
-    ("T100", "T100"),
-    ("T200", "T200"),
-    ("T500", "T500"),
-    ("TP500", "TP-500"),
-    ("T1000", "T1000"),
-    ("TP1000", "TP-1000"),
-    ("T1250", "T1250"),
-    ("T1500", "T1500"),
-    ("T2000", "T2000"),
-    ("TE3", "TE-3"),
-    ("TE2", "TE-2"),
-    ("TE1", "TE-1"),
-]
+def get_db_connection():
+    print("Using DB file:", DB_PATH)
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
+def ensure_categories_table():
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row
+    cur = conn.cursor()
+
+    # Create table if not exists
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            code TEXT NOT NULL UNIQUE,
+            type TEXT CHECK(type IN ('domestic','international')) NOT NULL,
+            display_name TEXT,
+            deleted INTEGER DEFAULT 0
+        );
+    """)
+
+    # Try to add 'deleted' if missing
+    try:
+        cur.execute("ALTER TABLE categories ADD COLUMN deleted INTEGER DEFAULT 0;")
+    except sqlite3.OperationalError:
+        pass
+
+    # Seed with initial categories if table is empty
+    cur.execute("SELECT COUNT(*) FROM categories")
+    if cur.fetchone()[0] == 0:
+        cur.executemany(
+            "INSERT INTO categories (code, type, display_name) VALUES (?, ?, ?)",
+            [
+                ("T100", "domestic", "T100"),
+                ("T200", "domestic", "T200"),
+                ("T500", "domestic", "T500"),
+                ("T1000", "domestic", "T1000"),
+                ("T1250", "domestic", "T1250"),
+                ("T1500", "domestic", "T1500"),
+                ("T2000", "domestic", "T2000"),
+                ("TP500", "international", "TP500"),
+                ("TP1000", "international", "TP1000"),
+                ("TE3", "international", "TE3"),
+                ("TE2", "international", "TE2"),
+                ("TE1", "international", "TE1"),
+            ]
+        )
+
+    conn.commit()
+    conn.close()
+
+
+def ensure_points_table():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # Create points table with Place and any existing categories as columns
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS points (
+            Place INTEGER PRIMARY KEY
+        );
+    """)
+    # Seed default places 0..32 if empty
+    cur.execute("SELECT COUNT(*) AS c FROM points;")
+    if cur.fetchone()["c"] == 0:
+        cur.executemany("INSERT INTO points (Place) VALUES (?)", [(p,) for p in range(0, 33)])
+    conn.commit()
+    conn.close()
+
+def load_categories(include_deleted: bool = False):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    if include_deleted:
+        cur.execute("SELECT code, display_name, type FROM categories ORDER BY type, code")
+    else:
+        cur.execute("SELECT code, display_name, type FROM categories WHERE deleted = 0 ORDER BY type, code")
+    rows = cur.fetchall()
+    conn.close()
+    return rows  # now returns a list of rows with (code, display_name, type)
+
+
+
+def load_categories_by_type(include_deleted: bool = False):
+    conn = get_db_connection()
+    cur = conn.cursor()
+    if include_deleted:
+        cur.execute("SELECT code, display_name, type FROM categories ORDER BY type, code")
+    else:
+        cur.execute("SELECT code, display_name, type FROM categories WHERE deleted = 0 ORDER BY type, code")
+    rows = cur.fetchall()
+    conn.close()
+
+    domestic = [(r[0], r[1]) for r in rows if r[2] == "domestic"]
+    international = [(r[0], r[1]) for r in rows if r[2] == "international"]
+
+    return {"domestic": domestic, "international": international}
+
+
+
+def load_points_map(point_columns):
+    """
+    Build a mapping of {place: {category_code: points}} from the points table.
+    point_columns is expected to be a list of (code, display_name) tuples.
+    """
+    ensure_points_table()
+    conn = get_db_connection()
+    conn.row_factory = sqlite3.Row   # ✅ ensure rows are dict‑like
+    cur = conn.cursor()
+    cur.execute("SELECT * FROM points;")
+    rows = cur.fetchall()
+    conn.close()
+
+    result = {}
+    for r in rows:
+        place = r["Place"]  # adjust if your schema uses lowercase 'place'
+        inner = {}
+        for col_code, _disp in point_columns:
+            # fill in points for each category code, defaulting to None if missing
+            inner[col_code] = r[col_code] if col_code in r.keys() else None
+        result[place] = inner
+    return result
+
+# Flask app creation
 app = Flask(__name__)
 app.secret_key = "IWA@1StJohns"
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.config['ENV'] = 'development'
 app.config['DEBUG'] = True
+
+# Ensure tables exist before routes use them
+ensure_categories_table()
+ensure_points_table()
+
 
 # Step 1: initialize login manager
 login_manager = LoginManager()
@@ -132,8 +244,16 @@ def bootstrap_db():
             print(f"Bootstrap failed: {e}")
         _bootstrapped = True
 
+def reset_categories_table():
+    conn = get_db_connection()
+    cur = conn.cursor()
+    # Drop the old table completely
+    cur.execute("DROP TABLE IF EXISTS categories;")
+    conn.commit()
+    conn.close()
+    # Recreate and reseed with clean codes
+    ensure_categories_table()
 
-from datetime import datetime, date, timedelta
 
 def ensure_points_table():
     conn = get_db_connection()
@@ -230,9 +350,13 @@ def add_ranking_week(week_id: str, week_label: str | None = None):
     combined.to_sql("rankings", conn, if_exists="append", index=False)
     conn.close()
 
-    print(f"Saved {len(combined)} rows for Week={week_value} from WeekID={week_id}.")
+    # print(f"Saved {len(combined)} rows for Week={week_value} from WeekID={week_id}.")
 
 def ensure_tournaments_table():
+
+    # Ensure categories table exists first
+    ensure_categories_table()
+
     conn = get_db_connection()
     cur = conn.cursor()
 
@@ -277,30 +401,9 @@ def ensure_tournaments_table():
         # Column already exists
         pass
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+        conn.close()
 
-def load_points_map():
-    """
-    Load points table into a nested dict:
-    {place: {col_code: points_int_or_None}}
-    Using the internal codes in POINT_COLUMNS (e.g. T100, TP500, TE1)
-    """
-    ensure_points_table()
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM points;")
-    rows = cur.fetchall()
-    conn.close()
-
-    result = {}
-    for r in rows:
-        place = r["Place"]
-        inner = {}
-        for col_code, _disp in POINT_COLUMNS:
-            inner[col_code] = r[col_code]
-        result[place] = inner
-    return result
 
 
 def load_player_weekly_ranks(player_name: str, age_group: str):
@@ -406,14 +509,12 @@ def fetch_singles_stats(tournament_id: str, player_id: str):
 
 
 
-from datetime import datetime, timedelta
-from collections import defaultdict
-import sqlite3
-
 def build_tournament_view(player_name: str, age_group: str) -> dict:
     ensure_tournaments_table()
-    points_map = load_points_map()
+    point_columns = load_categories()
+    points_map = load_points_map(point_columns)
     rankings_map = load_player_rankings(player_name, age_group)
+    categories = load_categories_by_type()
 
     conn = get_db_connection()
     conn.row_factory = sqlite3.Row
@@ -445,7 +546,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         result = {"singles": (0, 0), "doubles": (0, 0)}
 
         if not stats_table:
-            print(f"[DEBUG] No stats table found for {tournament_id}/{player_id}")
+            # print(f"[DEBUG] No stats table found for {tournament_id}/{player_id}")
             return result
 
         def parse_wl(text: str):
@@ -455,12 +556,12 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
                     w, l = wl_part.split("-")
                     return int(w), int(l)
             except Exception as e:
-                print(f"[DEBUG] parse_wl error: {e} on text={text}")
-            return 0, 0
+                # print(f"[DEBUG] parse_wl error: {e} on text={text}")
+                return 0, 0
 
         for row in stats_table.select("tbody tr"):
             tds = [td.get_text(strip=True) for td in row.select("td")]
-            print(f"[DEBUG] Row cells: {tds}")  # <-- see what’s being parsed
+            # print(f"[DEBUG] Row cells: {tds}")  # <-- see what’s being parsed
             if not tds or len(tds) < 3:
                 continue
             label = tds[0].lower()
@@ -470,7 +571,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
             elif label == "doubles":
                 result["doubles"] = parse_wl(wl_text)
 
-        print(f"[DEBUG] Parsed stats for {tournament_id}/{player_id}: {result}")
+        # print(f"[DEBUG] Parsed stats for {tournament_id}/{player_id}: {result}")
         return result
 
 
@@ -486,8 +587,8 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
 
     total_won = 0
     total_lost = 0
-    cat_counts = {code: 0 for code, _disp in POINT_COLUMNS}
-    cat_points = {code: 0 for code, _disp in POINT_COLUMNS}
+    cat_counts = {code: 0 for code, _disp in point_columns}
+    cat_points = {code: 0 for code, _disp in point_columns}
 
     max_ranking_points = None
     top6_tournaments = []
@@ -523,9 +624,6 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         # Totals: decide if you want singles only or both
         total_won += won
         total_lost += lost
-
-        # Debug prints
-        print(f"[DEBUG] Tournament {r['tournament_name']} -> Singles {singles_won}-{singles_lost}, Doubles {doubles_won}-{doubles_lost}")
 
 
         if cat_code in cat_counts:
@@ -592,7 +690,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
             "doubles_lost": doubles_lost,
             "doubles_total": doubles_won + doubles_lost,
             "tournament_id": r["tournament_id"],
-            "is_international": r["is_international"],
+            "is_international": str(r["is_international"]) == "1",
             "event_id": r["event_id"],
             "draw_id": r["draw_id"],
             "player_id": r["player_id"],
@@ -692,7 +790,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
     }
 
     # Ranking points per category from rows marked is_top6 (latest 12-month window)
-    cat_ranking_points = {code: 0 for code, _disp in POINT_COLUMNS}
+    cat_ranking_points = {code: 0 for code, _disp in point_columns}
     for rr in rows:
         if rr.get("is_top6"):
             cat = rr.get("cat_code")
@@ -768,8 +866,20 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         },
     }
 
+    # ✅ Sorting helpers for category dropdown in tournaments table
+    def sort_domestic(cats):
+        # T100, T200, T500, T1000 → sort by the numeric part
+        return sorted(cats, key=lambda x: int(x[0][1:]))
 
+    def sort_international(cats):
+        # TE1, TP500, TP1000 → sort by the numeric part
+        return sorted(cats, key=lambda x: int(''.join(filter(str.isdigit, x[0])) or 0))
 
+    # ✅ Apply sorting before return
+    domestic_columns = sort_domestic(categories["domestic"])
+    international_columns = sort_international(categories["international"])
+
+    
     return {
         "rows": rows,
         "totals": {
@@ -781,6 +891,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         },
         "cat_counts": cat_counts,
         "cat_points": cat_points,
+        "point_columns": point_columns,
         "max_ranking_points": max_ranking_points,
         "cat_ranking_points": cat_ranking_points,
         "top6_tournaments": top6_tournaments,
@@ -791,6 +902,8 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         "category_summary": filtered_summary,
         "grand_total": grand_total,
         "stat_summary": stat_summary,
+        "domestic_columns": domestic_columns, 
+        "international_columns": international_columns
     }
 
 
@@ -1113,28 +1226,66 @@ def admin_update():
 @app.route("/points", methods=["GET", "POST"])
 def points():
     ensure_points_table()
-    saved = request.args.get("saved") == "1"
+
+    # Load categories fresh from DB (only active ones)
+    raw_categories = load_categories(include_deleted=False)  # must return code, display_name, type
+
+    def _numeric_part(code: str) -> int:
+        digits = ''.join(ch for ch in code if ch.isdigit())
+        return int(digits) if digits else 0
+
+    def sort_by_numeric(items):
+        # items are (code, display_name) tuples
+        return sorted(items, key=lambda x: _numeric_part(x[0]))
+
+    # Split by type
+    domestic = [(r["code"], r["display_name"]) for r in raw_categories if r["type"] == "domestic"]
+    international = [(r["code"], r["display_name"]) for r in raw_categories if r["type"] == "international"]
+
+    # Sort each group
+    domestic_sorted = sort_by_numeric(domestic)          # T100 → T200 → T500 → T1000
+    international_sorted = sort_by_numeric(international) # TE1 → TP500 → TP1000
+
+    # Merge in desired order for the points table
+    point_columns = domestic_sorted + international_sorted
+
+    points_map = load_points_map(point_columns)
 
     if request.method == "POST":
+        action = request.form.get("action")
+
         conn = get_db_connection()
         cur = conn.cursor()
 
-        # loop through places 0..32
-        for place in range(0, 33):
-            for col_name, _ in POINT_COLUMNS:
-                field_name = f"{col_name}_{place}"
-                val = request.form.get(field_name)
+        if action == "add_category":
+            code = request.form["new_code"].strip()
+            display = request.form["new_display"].strip()
+            type_ = request.form["new_type"]
 
-                if val is None or val == "":
-                    cur.execute(
-                        f"UPDATE points SET {col_name} = NULL WHERE Place = ?",
-                        (place,),
-                    )
-                else:
-                    cur.execute(
-                        f"UPDATE points SET {col_name} = ? WHERE Place = ?",
-                        (int(val), place),
-                    )
+            # insert new category
+            cur.execute(
+                "INSERT INTO categories (code, display_name, type, deleted) VALUES (?, ?, ?, 0)",
+                (code, display, type_)
+            )
+            # add column to points table
+            cur.execute(f'ALTER TABLE points ADD COLUMN "{code}" INTEGER')
+
+        elif action == "delete_category":
+            code = request.form["delete_code"]
+            # soft delete
+            cur.execute("UPDATE categories SET deleted = 1 WHERE code = ?", (code,))
+
+        else:
+            # update points values
+            for place in range(0, 33):
+                for col_name, _ in point_columns:
+                    field_name = f"{col_name}_{place}"
+                    val = request.form.get(field_name)
+                    quoted_col = f'"{col_name}"'
+                    if val is None or val == "":
+                        cur.execute(f"UPDATE points SET {quoted_col} = NULL WHERE Place = ?", (place,))
+                    else:
+                        cur.execute(f"UPDATE points SET {quoted_col} = ? WHERE Place = ?", (int(val), place))
 
         conn.commit()
         conn.close()
@@ -1145,15 +1296,20 @@ def points():
     cur = conn.cursor()
     cur.execute("SELECT * FROM points ORDER BY Place;")
     rows = cur.fetchall()
+    # print(rows)
     conn.close()
+
+    saved = request.args.get("saved") == "1"
+    
 
     return render_template(
         "points.html",
         rows=rows,
-        point_columns=POINT_COLUMNS,
+        point_columns=point_columns,  # ✅ sorted
         saved=saved,
         age_groups=AGE_GROUPS,
     )
+
 
 @app.route("/tournaments", methods=["GET", "POST"])
 def tournaments():
@@ -1174,10 +1330,7 @@ def tournaments():
     if age_group not in AGE_GROUPS:
         age_group = "BS14"
 
-    # Debug: show what form posted
-    if request.method == "POST":
-        print("POST form data:", request.form)
-
+    
     action = request.form.get("action")
 
     # Save edits
@@ -1214,15 +1367,12 @@ def tournaments():
                 cur.execute("UPDATE tournaments SET close_date=? WHERE id=?", (value or None, row_id))
             elif key.startswith("event_"):
                 row_id = key.split("_")[1]
-                print("Updating event_id for row", row_id, "to", value)
                 cur.execute("UPDATE tournaments SET event_id = ? WHERE id = ?", (value if value != "" else None, row_id))
             elif key.startswith("draw_"):
                 row_id = key.split("_")[1]
-                print("Updating draw_id for row", row_id, "to", value)
                 cur.execute("UPDATE tournaments SET draw_id = ? WHERE id = ?", (value if value != "" else None, row_id))
             elif key.startswith("player_"):
                 row_id = key.split("_")[1]
-                print("Updating player_id for row", row_id, "to", value)
                 cur.execute("UPDATE tournaments SET player_id = ? WHERE id = ?", (value if value != "" else None, row_id))    
 
         conn.commit()
@@ -1305,12 +1455,14 @@ def tournaments():
         totals=totals,
         cat_counts=cat_counts,
         cat_points=cat_points,
-        point_columns=POINT_COLUMNS,
+        point_columns=view["point_columns"],
         latest_week=view["latest_week"],
         latest_rank=view["latest_rank"], 
         best_rank=view["best_rank"],
         best_rank_week=view["best_rank_week"],
         stat_summary=view["stat_summary"],
+        domestic_columns=view["domestic_columns"], 
+        international_columns=view["international_columns"]
     )
    
 @app.route("/tournaments/delete/<int:row_id>", methods=["POST"])
@@ -1324,66 +1476,6 @@ def delete_tournament(row_id):
     conn.close()
     return redirect(url_for("tournaments", player=player_name, age_group=age_group))
 
-from services.entries import load_entries
-
-@app.route("/entries_debug")
-def entries_debug():
-    try:
-        tournament_id = request.args.get("tournament_id")
-        event_id = request.args.get("event_id", type=int)
-
-        # Fetch the event page
-        url = f"https://ti.tournamentsoftware.com/sport/event.aspx?id={tournament_id}&event={event_id}"
-        headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
-        resp = requests.get(url, headers=headers)
-        resp.raise_for_status()
-
-        # Parse entries table
-        tables = pd.read_html(resp.text)
-        entries_df = tables[1].copy()
-        entries_df = entries_df.rename(columns={"Player": "player"})
-        entries_df["player_norm"] = entries_df["player"].apply(normalize_name)
-
-        # Load rankings
-        rankings_df = load_rankings().copy()
-        rankings_df.columns = [c.strip().lower().replace(" ", "_") for c in rankings_df.columns]
-        rankings_df["player_norm"] = rankings_df["player"].astype(str).apply(normalize_name)
-
-        # Merge entries with rankings on normalized name
-        merged_df = entries_df.merge(rankings_df, on="player_norm", how="left")
-
-        # 1. Unmatched entries
-        unmatched_entries = []
-        for key in set(entries_df["player_norm"]) - set(rankings_df["player_norm"]):
-            raw = entries_df.loc[entries_df["player_norm"] == key, "player"].tolist()
-            unmatched_entries.append({"raw": raw, "norm": key})
-
-        # 2. Unmatched rankings
-        unmatched_rankings = []
-        for key in set(rankings_df["player_norm"]) - set(entries_df["player_norm"]):
-            raw = rankings_df.loc[rankings_df["player_norm"] == key, "player"].tolist()
-            unmatched_rankings.append({"raw": raw, "norm": key})
-
-        # 3. Invalid rank entries (matched but rank is NaN/blank)
-        invalid_rank_entries = []
-        for _, row in merged_df.iterrows():
-            if pd.isna(row.get("rank")) or str(row.get("rank")).strip() == "":
-                invalid_rank_entries.append({
-                    "raw": row.get("player_x", ""),   # entry-side name
-                    "rank_player": row.get("player_y", ""),  # ranking-side name
-                    "norm": row["player_norm"],
-                    "reason": "no valid rank"
-                })
-
-        return render_template(
-            "entries_debug.html",
-            unmatched_entries=unmatched_entries,
-            unmatched_rankings=unmatched_rankings,
-            invalid_rank_entries=invalid_rank_entries
-        )
-
-    except Exception as e:
-        return f"❌ Error: {str(e)}"
 
 @app.route("/entries")
 def entries_page():
@@ -1422,7 +1514,7 @@ def entries_page():
 
 @app.route("/import_entries/<tournament_id>", methods=["GET", "POST"])
 def import_entries(tournament_id):
-    print("HIT /import_entries (start)")
+    # print("HIT /import_entries (start)")
     if request.method == "POST":
         draw_id = request.form.get("draw_id")
 
@@ -1432,8 +1524,8 @@ def import_entries(tournament_id):
 
         # Parse tables (raw)
         tables = pd.read_html(resp.text)
-        print(f"Found {len(tables)} tables")
-        print("Raw entries table sample (before formatting):\n", tables[1].head())
+        # print(f"Found {len(tables)} tables")
+        # print("Raw entries table sample (before formatting):\n", tables[1].head())
 
         # Use the entries table
         entries_df = tables[1].copy()
@@ -1488,9 +1580,6 @@ def import_entries(tournament_id):
             if col in merged_df.columns:
                 merged_df[col] = merged_df[col].fillna("N/A")
 
-        # Debug merged view
-        print("Merged sample:\n", merged_df[["player", "player_norm", "rank"]].head(10))
-
         # Merge entries with rankings on normalized name
     merged_df = entries_df.merge(rankings_df, on="player_norm", how="left")
 
@@ -1513,7 +1602,7 @@ def import_entries(tournament_id):
 
         matches = (merged_df["rank"] != 999).sum()
         total = len(merged_df)
-        print(f"Matched {matches}/{total} entries")
+        # print(f"Matched {matches}/{total} entries")
 
         return render_template("entries.html", tournament_id=tournament_id, entries=entries)
 
@@ -1709,7 +1798,6 @@ def entries(tournament_id):
         tournament_age_group=tournament_age_group,
     )
 
-from bs4 import BeautifulSoup
 
 @app.route("/matches/<tournament_id>/<player_id>")
 def matches(tournament_id, player_id):
@@ -1859,6 +1947,32 @@ def matches(tournament_id, player_id):
         stat_summary=stat_summary
     )
 
+@app.route("/categories", methods=["GET","POST"])
+def categories():
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    if request.method == "POST":
+        action = request.form.get("action")
+        if action == "add":
+            name = request.form.get("name").strip()
+            type_ = request.form.get("type")
+            cur.execute("INSERT INTO categories (name,type) VALUES (?,?)",(name,type_))
+        elif action == "delete":
+            cat_id = request.form.get("id")
+            cur.execute("DELETE FROM categories WHERE id=?",(cat_id,))
+        elif action == "edit":
+            cat_id = request.form.get("id")
+            name = request.form.get("name").strip()
+            type_ = request.form.get("type")
+            cur.execute("UPDATE categories SET name=?, type=? WHERE id=?",(name,type_,cat_id))
+        conn.commit()
+
+    cur.execute("SELECT * FROM categories ORDER BY type, code")
+    cats = cur.fetchall()
+    conn.close()
+    return render_template("categories.html", categories=cats)
+
     
 @app.route("/player")
 def player():
@@ -1928,9 +2042,10 @@ def player():
 
     # Call your tournament helper
     tournament_data = build_tournament_view(name, age_group)
-    print(f"\n=== Top 6 tournaments for {name} ({age_group}) ===")
+    # print(f"\n=== Top 6 tournaments for {name} ({age_group}) ===")
     for r in tournament_data["top6_tournaments"]:
         print(f"{r['tournament_name']} → {r['points']}")
+
 
     # Extract top 6 tournaments for bar chart
     bar_plot_json = None
@@ -2016,11 +2131,6 @@ def player():
         best_rank_week=tournament_data["best_rank_week"],
     )
 
-
-# Add this near the bottom of app.py, before app.run
-print("Registered routes:")
-for rule in app.url_map.iter_rules():
-    print(rule)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=True)

@@ -46,6 +46,7 @@
       }
     }
   </style>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
 </head>
 <body>
 <div class="card shadow-sm mb-3">
@@ -277,7 +278,10 @@
                 >
                   <input type="hidden" name="player_name" value="{{ player_name }}" />
                   <input type="hidden" name="age_group" value="{{ age_group }}" />
-                  <button type="submit" class="btn btn-sm btn-danger">-</button>
+                  <button type="submit" name="action" value="delete_category" 
+                          class="btn btn-danger btn-sm ps-1 pe-1 ms-1 me-1">
+                    <i class="bi bi-trash text-white"></i>
+                  </button>
                 </form>
               </td>
               <td style="font-size: .875rem; text-align: center;">{{ r.no }}</td>
@@ -304,20 +308,21 @@
                 <select
                   name="cat_{{ r.id }}"
                   class="form-select form-select-sm"
-                  style="width:auto; max-width:96px;"
+                  style="width:95px;"
                 >
-                  <option value=""></option>
-                  {% for col_code, display_name in point_columns %}
-                  <option
-                    value="{{ col_code }}"
-                    {% if r.cat_code == col_code %}selected{% endif %}
-                  >
-                    {{ display_name }}
-                  </option>
+                  {% set options = international_columns if r.is_international else domestic_columns %}
+                  {% for col_code, display_name in options %}
+                    <option value="{{ col_code }}"
+                      {% if r.cat_code %}
+                        {% if r.cat_code == col_code %}selected{% endif %}
+                      {% else %}
+                        {% if loop.first %}selected{% endif %}
+                      {% endif %}
+                    >{{ display_name }}</option>
                   {% endfor %}
                 </select>
               </td>
-              
+            
               <td style="font-size: .875rem;">
                 <input type="date" name="opens_{{ r.id }}" value="{{ r.opens_date or '' }}" style="width:auto; max-width:100px;">
               </td>
