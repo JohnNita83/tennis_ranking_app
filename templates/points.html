@@ -87,10 +87,11 @@
                 <th>
                   {{ display_name }}
                   <div style="display:inline;">
-                    <form method="POST" action="{{ url_for('points') }}" style="display:inline;">
+                    <form method="POST" action="{{ url_for('points') }}" style="display:inline;"
+                          onsubmit="return confirm('Are you sure you want to delete this category?');">
                       <input type="hidden" name="delete_code" value="{{ col_name }}">
                       <button type="submit" name="action" value="delete_category" 
-                            class="btn btn-danger btn-sm ps-1 pe-1 ms-1 me-1">
+                              class="btn btn-danger btn-sm ps-1 pe-1 ms-1 me-1">
                         <i class="bi bi-trash text-white"></i>
                       </button>
                     </form>

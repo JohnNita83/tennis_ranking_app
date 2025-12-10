@@ -23,6 +23,7 @@ import plotly.graph_objs as go
 import plotly.utils
 import json
 from collections import defaultdict
+from stringing import stringing_bp
 
 
 COOKIE_FILE = Path(__file__).with_name("cookie.txt")
@@ -166,6 +167,9 @@ app.secret_key = "IWA@1StJohns"
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.config['ENV'] = 'development'
 app.config['DEBUG'] = True
+
+# Register Blueprints
+app.register_blueprint(stringing_bp)
 
 # Ensure tables exist before routes use them
 ensure_categories_table()

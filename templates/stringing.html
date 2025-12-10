@@ -1,0 +1,193 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="container mt-4">
+
+<div class="row g-3 mb-4">
+  <!-- Select Player card (1/3 width) -->
+  <div class="col-md-4 col-12">
+    <div class="card h-100 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">Select player</h5>
+        <label for="playerSelect" class="form-label">Player</label>
+        <select id="playerSelect" class="form-select"
+                onchange="location.href='?player_id=' + this.value">
+          <option value="">Select Player</option>
+          {% for player in players %}
+            <option value="{{ player.id }}"
+              {% if player.id == selected_player_id %}selected{% endif %}>
+              {{ player.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Player card (2/3 width, divided into 2 columns) -->
+  <div class="col-md-8 col-12">
+    <div class="card h-100 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">Add or manage player</h5>
+        <form method="post" action="{{ url_for('stringing.add_player') }}" class="row g-2 align-items-end">
+
+          <!-- New Player -->
+          <div class="col-md-6">
+            <label class="form-label">New Player</label>
+            <div class="input-group">
+              <input type="text" name="name" class="form-control" placeholder="Enter name" required>
+              <button class="btn btn-success btn-sm">+ Player</button>
+            </div>
+          </div>
+
+          <!-- Current Player + delete -->
+          <div class="col-md-6">
+            {% if selected_player_id %}
+              <label class="form-label">Current Player</label>
+              <div class="input-group">
+                <input type="text" class="form-control" value="{{ selected_player.name }}" readonly>
+                <form method="post" action="{{ url_for('stringing.delete_player', player_id=selected_player_id) }}"
+                      onsubmit="return confirm('Are you sure you want to delete {{ selected_player.name }} and all associated stringing jobs?');">
+                  <button class="btn btn-danger btn-sm">- Player</button>
+                </form>
+              </div>
+            {% endif %}
+          </div>
+
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+
+  {% if selected_player %}
+  <h4 class="mb-4 mt-4">Stringing jobs for {{ selected_player.name }}</h4>
+
+  <div class="row g-3 mb-4">
+  <!-- Select Racket card (1/3 width) -->
+  <div class="col-md-4 col-12">
+    <div class="card h-100 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">Select racket</h5>
+        <label for="racketSelect" class="form-label">Racket</label>
+        <select id="racketSelect" class="form-select"
+                onchange="location.href='?player_id={{ selected_player_id }}&racket_id=' + this.value">
+          <option value="">Select Racket</option>
+          {% for racket in rackets %}
+            <option value="{{ racket.id }}"
+              {% if racket.id == selected_racket_id %}selected{% endif %}>
+              {{ racket.make_model }} ({{ racket.serial or 'no serial' }})
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Racket card (2/3 width, divided into 3 columns) -->
+  <div class="col-md-8 col-12">
+    <div class="card h-100 shadow-sm">
+      <div class="card-body">
+        <h5 class="card-title">Add racket</h5>
+        <form method="post" action="{{ url_for('stringing.add_racket', player_id=selected_player_id) }}" class="row g-2 align-items-end">
+
+          <!-- Make/Model -->
+          <div class="col-md-4">
+            <label class="form-label">Make/Model</label>
+            <input type="text" name="make_model" class="form-control" placeholder="e.g. Wilson Blade" required>
+          </div>
+
+          <!-- Serial -->
+          <div class="col-md-4">
+            <label class="form-label">Serial (optional)</label>
+            <input type="text" name="serial" class="form-control" placeholder="e.g. SN12345">
+          </div>
+
+          <!-- Add button -->
+          <div class="col-md-4">
+            <button type="submit" class="btn btn-success w-100">
+              + Racket
+            </button>
+          </div>
+
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+  {% if selected_racket_id %}
+    {% if selected_racket %}
+    <div class="mt-3 d-flex align-items-center justify-content-between">
+    <h5 class="fw-bold mb-0">
+        Selected racket: {{ selected_racket.make_model }}
+        {% if selected_racket.serial %}
+        <small class="text-muted">({{ selected_racket.serial }})</small>
+        {% endif %}
+    </h5>
+
+    <!-- Delete racket button -->
+    <form method="post" action="{{ url_for('stringing.delete_racket', racket_id=selected_racket.id) }}"
+            onsubmit="return confirm('Are you sure you want to delete {{ selected_racket.make_model }}? All stringing data will be removed!');">
+        <button class="btn btn-danger btn-sm">Delete Racket</button>
+    </form>
+    </div>
+    {% endif %}
+
+    <div class="table-responsive mt-3">
+    <table class="table table-sm table-striped align-middle">
+        <thead class="table-dark">
+        <tr>
+            <th>Date</th>
+            <th>Mains</th>
+            <th class="text-center">Gauge</th>
+            <th class="text-center">Tension</th>
+            <th>Crosses</th>
+            <th class="text-center">Gauge</th>
+            <th class="text-center">Tension</th>
+            <th class="text-center">Actions</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for rec in selected_racket.stringing_records %}
+        <tr>
+            <td style="font-size:.875rem; width:50px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+            {{ rec.date }}
+            </td>
+            <td style="font-size:.875rem;">{{ rec.mains }}</td>
+            <td class="text-center" style="font-size:.875rem;">{{ rec.m_gauge }}</td>
+            <td class="text-center" style="font-size:.875rem;">{{ rec.m_tension }}</td>
+            <td style="font-size:.875rem;">{{ rec.crosses }}</td>
+            <td class="text-center" style="font-size:.875rem;">{{ rec.c_gauge }}</td>
+            <td class="text-center" style="font-size:.875rem;">{{ rec.c_tension }}</td>
+            <td class="text-center">
+            <form method="post" action="{{ url_for('stringing.delete_stringing', record_id=rec.id) }}" 
+                class="d-inline"
+                onsubmit="return confirm('Are you sure you want to delete this stringing job?');">
+            <button class="btn btn-danger btn-sm ps-2 pe-2">-</button>
+            </form>
+            </td>
+        </tr>
+        {% endfor %}
+
+        <!-- Blank row for adding a new record -->
+        <tr>
+            <form method="post" action="{{ url_for('stringing.add_stringing', racket_id=selected_racket.id) }}">
+            <td><input type="date" name="date" class="form-control" style="width:auto; max-width:100px; font-size:.875rem;" required></td>
+            <td><input type="text" name="mains" class="form-control"></td>
+            <td><input type="text" name="m_gauge" class="form-control"></td>
+            <td><input type="number" step="0.1" name="m_tension" class="form-control"></td>
+            <td><input type="text" name="crosses" class="form-control"></td>
+            <td><input type="text" name="c_gauge" class="form-control"></td>
+            <td><input type="number" step="0.1" name="c_tension" class="form-control"></td>
+            <td class="text-center"><button class="btn btn-success btn-sm">+</button></td>
+            </form>
+        </tr>
+        </tbody>
+    </table>
+    </div>
+    {% endif %}
+  {% endif %}
+</div>
+{% endblock %}
