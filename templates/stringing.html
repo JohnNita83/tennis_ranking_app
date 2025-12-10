@@ -24,42 +24,41 @@
   </div>
 
   <!-- Add Player card (2/3 width, divided into 2 columns) -->
-  <div class="col-md-8 col-12">
-    <div class="card h-100 shadow-sm">
-      <div class="card-body">
-        <h5 class="card-title">Add or manage player</h5>
-        <form method="post" action="{{ url_for('stringing.add_player') }}" class="row g-2 align-items-end">
+<div class="col-md-8 col-12">
+  <div class="card h-100 shadow-sm">
+    <div class="card-body">
+      <h5 class="card-title">Add or manage player</h5>
+      <div class="row g-2 align-items-end">
 
-          <!-- New Player -->
-          <div class="col-md-6">
+        <!-- New Player (own form) -->
+        <div class="col-md-6">
+          <form method="post" action="{{ url_for('stringing.add_player') }}">
             <label class="form-label">New Player</label>
             <div class="input-group">
               <input type="text" name="name" class="form-control" placeholder="Enter name" required>
               <button class="btn btn-success btn-sm">+ Player</button>
             </div>
-          </div>
+          </form>
+        </div>
 
-          <!-- Current Player + delete -->
-          <div class="col-md-6">
-            {% if selected_player_id %}
+        <!-- Current Player + delete (own form) -->
+        <div class="col-md-6">
+          {% if selected_player_id %}
+            <form method="post" action="{{ url_for('stringing.delete_player', player_id=selected_player_id) }}"
+                  onsubmit="return confirm('Are you sure you want to delete {{ selected_player.name }} and all associated stringing jobs?');">
               <label class="form-label">Current Player</label>
               <div class="input-group">
                 <input type="text" class="form-control" value="{{ selected_player.name }}" readonly>
-                <form method="post" action="{{ url_for('stringing.delete_player', player_id=selected_player_id) }}"
-                      onsubmit="return confirm('Are you sure you want to delete {{ selected_player.name }} and all associated stringing jobs?');">
-                  <button class="btn btn-danger btn-sm">- Player</button>
-                </form>
+                <button class="btn btn-danger btn-sm">- Player</button>
               </div>
-            {% endif %}
-          </div>
+            </form>
+          {% endif %}
+        </div>
 
-        </form>
       </div>
     </div>
   </div>
 </div>
-
-
 
   {% if selected_player %}
   <h4 class="mb-4 mt-4">Stringing jobs for {{ selected_player.name }}</h4>
