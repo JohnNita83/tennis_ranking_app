@@ -26,18 +26,6 @@ from collections import defaultdict
 from stringing import stringing_bp
 from config import DATABASE
 
-def check_db():
-    from config import DATABASE
-    try:
-        with sqlite3.connect(DATABASE) as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT COUNT(*) FROM sqlite_schema;")
-            print("Tables in DB:", cur.fetchone()[0], flush=True)
-    except Exception as e:
-        print("DB check failed:", e, flush=True)
-
-check_db()
-
 
 # Quick startup check
 with sqlite3.connect(DATABASE) as conn:
@@ -268,6 +256,18 @@ def bootstrap_db():
         except Exception as e:
             print(f"Bootstrap failed: {e}")
         _bootstrapped = True
+
+def check_db():
+    from config import DATABASE
+    try:
+        with sqlite3.connect(DATABASE) as conn:
+            cur = conn.cursor()
+            cur.execute("SELECT COUNT(*) FROM sqlite_schema;")
+            print("Tables in DB:", cur.fetchone()[0], flush=True)
+    except Exception as e:
+        print("DB check failed:", e, flush=True)
+
+check_db()
         
 
 def reset_categories_table():
