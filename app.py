@@ -27,12 +27,6 @@ from stringing import stringing_bp
 from config import DATABASE
 
 
-# Quick startup check
-with sqlite3.connect(DATABASE) as conn:
-    cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) FROM sqlite_schema;")
-    print("Tables in DB:", cur.fetchone()[0], flush=True)
-
 COOKIE_FILE = Path(__file__).with_name("cookie.txt")
 
 def load_cookie() -> str:
@@ -180,6 +174,22 @@ app.config['DEBUG'] = True
 # Register Blueprints
 app.register_blueprint(stringing_bp)
 
+@app.before_first_request
+def startup_check():
+    from config import DATABASE
+    import os
+    print("Using DB:", DATABASE, flush=True)
+    if not os.path.exists(DATABASE):
+        print("WARNING: DB file does not exist:", DATABASE, flush=True)
+    else:
+        try:
+            with sqlite3.connect(DATABASE) as conn:
+                cur = conn.cursor()
+                cur.execute("SELECT COUNT(*) FROM sqlite_schema;")
+                print("Tables in DB:", cur.fetchone()[0], flush=True)
+        except Exception as e:
+            print("DB check failed:", e, flush=True)
+
 # Ensure tables exist before routes use them
 ensure_categories_table()
 ensure_points_table()
@@ -256,18 +266,6 @@ def bootstrap_db():
         except Exception as e:
             print(f"Bootstrap failed: {e}")
         _bootstrapped = True
-
-def check_db():
-    from config import DATABASE
-    try:
-        with sqlite3.connect(DATABASE) as conn:
-            cur = conn.cursor()
-            cur.execute("SELECT COUNT(*) FROM sqlite_schema;")
-            print("Tables in DB:", cur.fetchone()[0], flush=True)
-    except Exception as e:
-        print("DB check failed:", e, flush=True)
-
-check_db()
         
 
 def reset_categories_table():
