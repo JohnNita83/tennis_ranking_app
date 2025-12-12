@@ -1,14 +1,23 @@
+# Ensure pip/setuptools/wheel are upgraded before other installs
 pip>=25.3
 setuptools>=75.0.0
-wheel
+wheel>=0.44.0
+
+# Core framework
 Flask==3.0.2
+Flask-Login==0.6.3
 gunicorn==22.0.0
+
+# Data & analysis
 pandas==2.2.3
 numpy==1.26.4
+rapidfuzz==3.9.4   # pin to latest stable with wheels
+
+# Web scraping & parsing
 requests==2.32.3
 beautifulsoup4==4.12.3
 lxml==5.2.1
 html5lib==1.1
-rapidfuzz
-plotly
-Flask-Login==0.6.3
+
+# Visualization
+plotly==5.24.1     # pin to latest stable with wheels
