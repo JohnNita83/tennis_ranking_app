@@ -36,6 +36,7 @@ def load_cookie() -> str:
         return ""
 
 # DB_PATH = "rankings.db"
+print("Using DB:", DATABASE)
 
 # Age groups we support
 AGE_GROUPS = ["BS12", "BS14", "BS16", "BS18", "GS12", "GS14", "GS16", "GS18"]
