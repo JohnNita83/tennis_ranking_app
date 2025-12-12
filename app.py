@@ -176,8 +176,8 @@ app.register_blueprint(stringing_bp)
 
 
 # Ensure tables exist before routes use them
-ensure_categories_table()
-ensure_points_table()
+# ensure_categories_table()
+# ensure_points_table()
 
 
 # Step 1: initialize login manager
