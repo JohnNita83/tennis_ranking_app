@@ -8,13 +8,11 @@
       padding: 0;
       cursor: pointer;
     }
-
     .star {
       font-size: 1.8rem;
       color: gray;
       text-decoration: none;
     }
-
     .star.active {
       color: gold;
     }
@@ -253,14 +251,14 @@
 
         <!-- Existing records -->
         {% for rec in selected_racket.stringing_records %}
-        <tr id="row-{{ rec.id }}" class="{% if rec.favorite %}table-warning{% endif %};">
+        <tr id="row-{{ rec.id }}" class="{% if rec.favorite %}table-warning{% endif %}">
           <td>
             <form method="post" action="{{ url_for('stringing.toggle_favorite', record_id=rec.id) }}" class="d-inline">
               <button type="submit" class="star-btn">
                 {% if rec.favorite %}
-                  <span class="star active">&#9733;</span>  <!-- filled star -->
+                  <span class="star active">&#9733;</span>
                 {% else %}
-                  <span class="star">&#9734;</span>        <!-- outline star -->
+                  <span class="star">&#9734;</span> 
                 {% endif %}
               </button>
             </form>
