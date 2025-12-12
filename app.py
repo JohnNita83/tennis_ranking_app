@@ -174,21 +174,6 @@ app.config['DEBUG'] = True
 # Register Blueprints
 app.register_blueprint(stringing_bp)
 
-@app.before_first_request
-def startup_check():
-    from config import DATABASE
-    import os
-    print("Using DB:", DATABASE, flush=True)
-    if not os.path.exists(DATABASE):
-        print("WARNING: DB file does not exist:", DATABASE, flush=True)
-    else:
-        try:
-            with sqlite3.connect(DATABASE) as conn:
-                cur = conn.cursor()
-                cur.execute("SELECT COUNT(*) FROM sqlite_schema;")
-                print("Tables in DB:", cur.fetchone()[0], flush=True)
-        except Exception as e:
-            print("DB check failed:", e, flush=True)
 
 # Ensure tables exist before routes use them
 ensure_categories_table()
@@ -259,13 +244,28 @@ _bootstrapped = False   # global flag
 def bootstrap_db():
     global _bootstrapped
     if not _bootstrapped:
+        from config import DATABASE
+        import os
+        print("Using DB:", DATABASE, flush=True)
+        if not os.path.exists(DATABASE):
+            print("WARNING: DB file does not exist:", DATABASE, flush=True)
+        else:
+            try:
+                with sqlite3.connect(DATABASE) as conn:
+                    cur = conn.cursor()
+                    cur.execute("SELECT COUNT(*) FROM sqlite_schema;")
+                    print("Tables in DB:", cur.fetchone()[0], flush=True)
+            except Exception as e:
+                print("DB check failed:", e, flush=True)
+
         try:
-            # Call the function you imported and aliased as run_update
             run_update()
             print("Database bootstrapped with current week rankings.")
         except Exception as e:
             print(f"Bootstrap failed: {e}")
+
         _bootstrapped = True
+
         
 
 def reset_categories_table():
