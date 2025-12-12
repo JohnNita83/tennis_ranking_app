@@ -1,9 +1,8 @@
 import sqlite3
 from datetime import datetime
-
 import pandas as pd
-
 from ranking_fetcher import fetch_category_current
+from config import DATABASE
 
 # Same mapping you used before for rankings categories
 CATEGORIES = {
@@ -20,7 +19,7 @@ CATEGORIES = {
     "GS18": "2081",
 }
 
-DB_PATH = "rankings.db"
+# DB_PATH = "rankings.db"
 
 
 def update_current_week():
@@ -65,7 +64,7 @@ def update_current_week():
     week_label = combined["Week"].iloc[0]
     print(f"Updating database for Week = {week_label!r}")
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DATABASE)
     cur = conn.cursor()
 
     # Try to delete existing rows for this week; ignore if table doesn't exist yet
@@ -83,10 +82,6 @@ def update_current_week():
     combined.to_sql("rankings", conn, if_exists="append", index=False)
     conn.close()
 
-    print(
-        f"Saved {len(combined)} rows into {DB_PATH} "
-        f"(table 'rankings') for Week {week_label}."
-    )
 
 
 if __name__ == "__main__":

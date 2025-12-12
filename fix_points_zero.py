@@ -1,8 +1,9 @@
 import sqlite3
+from config import DATABASE
 
-DB_PATH = "rankings.db"
+# DB_PATH = "rankings.db"
 
-conn = sqlite3.connect(DB_PATH)
+conn = sqlite3.connect(DATABASE)
 cur = conn.cursor()
 
 # Ensure points table exists

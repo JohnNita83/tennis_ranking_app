@@ -24,6 +24,7 @@ import plotly.utils
 import json
 from collections import defaultdict
 from stringing import stringing_bp
+from config import DATABASE
 
 
 COOKIE_FILE = Path(__file__).with_name("cookie.txt")
@@ -34,14 +35,13 @@ def load_cookie() -> str:
     except FileNotFoundError:
         return ""
 
-DB_PATH = "rankings.db"
+# DB_PATH = "rankings.db"
 
 # Age groups we support
 AGE_GROUPS = ["BS12", "BS14", "BS16", "BS18", "GS12", "GS14", "GS16", "GS18"]
 
 def get_db_connection():
-    print("Using DB file:", DB_PATH)
-    conn = sqlite3.connect(DB_PATH, timeout=10)
+    conn = sqlite3.connect(DATABASE, timeout=10)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -469,7 +469,7 @@ def load_player_rankings(player_name: str, age_group: str) -> dict:
     return result
 
 def load_rankings():
-    conn = sqlite3.connect("rankings.db")
+    conn = sqlite3.connect(DATABASE)
     df = pd.read_sql("SELECT * FROM rankings", conn)
     conn.close()
     # Normalize column names for easier merging
@@ -952,8 +952,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
 
 
 def get_db_connection():
-    print("Using DB file:", DB_PATH)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -1292,7 +1291,7 @@ def points():
     # Merge in desired order for the points table
     point_columns = domestic_sorted + international_sorted
 
-    print("=== DEBUG point_columns ===", point_columns)
+    # print("=== DEBUG point_columns ===", point_columns)
 
     points_map = load_points_map(point_columns)
 

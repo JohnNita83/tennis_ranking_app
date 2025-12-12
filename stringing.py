@@ -1,11 +1,12 @@
 from flask import Blueprint, render_template, request, redirect, flash, url_for
 import sqlite3
+from config import DATABASE
 
-DB_PATH = "rankings.db"
+# DB_PATH = "rankings.db"
 
 # --- Shared DB connection ---
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
     return conn
 

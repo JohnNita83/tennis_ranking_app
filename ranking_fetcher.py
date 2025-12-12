@@ -4,6 +4,7 @@ import pandas as pd
 import sqlite3
 from datetime import date
 from pathlib import Path
+from config import DATABASE
 
 COOKIE_FILE = Path(__file__).with_name("cookie.txt")
 
@@ -156,7 +157,7 @@ def fetch_category_for_week(week_id: str, age_group: str, category_id: str) -> p
     return combined
 
 
-DB_PATH = "rankings.db"
+# DB_PATH = "rankings.db"
 
 def add_ranking_week(week_id: str, week_label: str | None = None):
     """
@@ -191,7 +192,7 @@ def save_week_to_db(df: pd.DataFrame, week_id: str):
         print(f"No rows to save for week {week_id}")
         return
 
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DATABASE)
     cur = conn.cursor()
     cur.execute("""
         CREATE TABLE IF NOT EXISTS rankings (
@@ -224,7 +225,7 @@ def save_week_to_db(df: pd.DataFrame, week_id: str):
 
     df.to_sql("rankings", conn, if_exists="append", index=False)
     conn.close()
-    print(f"Saved {len(df)} rows into {DB_PATH} for Week {week_id}, AgeGroup {age_group}.")
+    # print(f"Saved {len(df)} rows into {DATABASE} for Week {week_id}, AgeGroup {age_group}.")
    
 
 if __name__ == "__main__":
