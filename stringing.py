@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for
+from flask import Blueprint, render_template, request, redirect, flash, url_for
 import sqlite3
 
 DB_PATH = "rankings.db"
@@ -40,6 +40,11 @@ def ensure_stringing_tables():
             FOREIGN KEY (racket_id) REFERENCES rackets(id) ON DELETE CASCADE
         );
     """)
+    try:
+        cur.execute("ALTER TABLE stringing_records ADD COLUMN favorite INTEGER DEFAULT 0;")
+    except sqlite3.OperationalError:
+        # Column already exists
+        pass
     conn.commit()
     conn.close()
 
@@ -147,6 +152,36 @@ def delete_racket(racket_id):
     player_id = player["player_id"] if player else None
     return redirect(url_for("stringing.stringing", player_id=player_id))
 
+@stringing_bp.route("/edit_racket/<int:racket_id>", methods=["POST"])
+def edit_racket(racket_id):
+    make_model = request.form.get("make_model")
+    serial = request.form.get("serial")
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Update racket
+    cur.execute(
+        "UPDATE rackets SET make_model=?, serial=? WHERE id=?",
+        (make_model, serial, racket_id)
+    )
+    conn.commit()
+
+    # ✅ Fetch the player_id for this racket
+    cur.execute("SELECT player_id FROM rackets WHERE id=?", (racket_id,))
+    row = cur.fetchone()
+    conn.close()
+
+    player_id = row["player_id"] if row else None
+
+    flash("Racket updated successfully!", "success")
+
+    # Redirect back with both player_id and racket_id
+    return redirect(url_for("stringing.stringing",
+                            player_id=player_id,
+                            racket_id=racket_id))
+
+
 
 @stringing_bp.route("/add_stringing/<int:racket_id>", methods=["POST"])
 def add_stringing(racket_id):
@@ -202,4 +237,34 @@ def delete_stringing(record_id):
     return redirect(
         url_for("stringing.stringing", player_id=player_id, racket_id=racket_id)
     )
+
+@stringing_bp.route("/toggle_favorite/<int:record_id>", methods=["POST"])
+def toggle_favorite(record_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Get current favorite state and the racket_id
+    cur.execute("SELECT favorite, racket_id FROM stringing_records WHERE id=?", (record_id,))
+    row = cur.fetchone()
+
+    if row:
+        new_value = 0 if row["favorite"] else 1
+        cur.execute("UPDATE stringing_records SET favorite=? WHERE id=?", (new_value, record_id))
+        conn.commit()
+
+        racket_id = row["racket_id"]
+
+        # ✅ Now fetch the player_id from the rackets table
+        cur.execute("SELECT player_id FROM rackets WHERE id=?", (racket_id,))
+        racket_row = cur.fetchone()
+        player_id = racket_row["player_id"] if racket_row else None
+    else:
+        racket_id = None
+        player_id = None
+
+    conn.close()
+
+    flash("Favourite updated!", "info")
+    return redirect(url_for("stringing.stringing", player_id=player_id, racket_id=racket_id))
+
 

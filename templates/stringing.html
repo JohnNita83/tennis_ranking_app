@@ -1,5 +1,34 @@
 {% extends "base.html" %}
 {% block content %}
+<head>
+  <style>
+    .star-btn {
+      background: none;
+      border: none;
+      padding: 0;
+      cursor: pointer;
+    }
+
+    .star {
+      font-size: 1.8rem;
+      color: gray;
+      text-decoration: none;
+    }
+
+    .star.active {
+      color: gold;
+    }
+    .table td, .table th {
+      white-space: nowrap;
+    }
+    .table-responsive {
+      overflow-x: auto;
+    }
+    .table {
+      width: auto;
+    }
+  </style>
+</head>
 <div class="container mt-4">
 
 <div class="row g-3 mb-4">
@@ -121,65 +150,96 @@
 
 
   {% if selected_racket_id %}
-    {% if selected_racket %}
-    <div class=" mt-3 mb-3 d-flex align-items-center justify-content-between">
-    <h4>
-        Stringing for:<br>
-        <span class="text-success">{{ selected_racket.make_model }}</span>
-        {% if selected_racket.serial %}
-          <small class="text-muted">({{ selected_racket.serial }})</small>
-        {% endif %}
-    </h4>
+  {% if selected_racket %}
+    <!-- Top row: title + buttons -->
+    <div class="mt-3 mb-3">
+      <div class="d-flex align-items-center justify-content-between">
+        <h4>
+          Stringing for:<br>
+          <span class="text-success">{{ selected_racket.make_model }}</span>
+          {% if selected_racket.serial %}
+            <small class="text-muted">({{ selected_racket.serial }})</small>
+          {% endif %}
+        </h4>
 
-    <!-- Delete racket button -->
-    <form method="post" action="{{ url_for('stringing.delete_racket', racket_id=selected_racket.id) }}"
-            onsubmit="return confirm('Are you sure you want to delete {{ selected_racket.make_model }}? All stringing data will be removed!');">
-        <button class="btn btn-danger btn-sm">Delete Racket</button>
-    </form>
+        <div class="d-flex gap-2">
+          <!-- Edit racket button -->
+          <button type="button" class="btn btn-warning btn-sm" onclick="toggleEditForm()">Edit Racket</button>
+
+          <!-- Delete racket button -->
+          <form method="post" action="{{ url_for('stringing.delete_racket', racket_id=selected_racket.id) }}"
+                onsubmit="return confirm('Are you sure you want to delete {{ selected_racket.make_model }}? All stringing data will be removed!');"
+                style="display:inline;">
+            <button class="btn btn-danger btn-sm">Delete Racket</button>
+          </form>
+        </div>
+      </div>
     </div>
-    {% endif %}
+
+    <!-- Edit form card (hidden by default) -->
+    <div id="editForm" class="col-12" style="display:none; margin:15px 0;">
+      <div class="card h-100 w-100 shadow-sm">
+        <div class="card-body">
+          <h5 class="card-title">Edit Racket</h5>
+          <form method="post" action="{{ url_for('stringing.edit_racket', racket_id=selected_racket.id) }}">
+            <div class="row">
+              <!-- Make/Model -->
+              <div class="col-md-4 col-12 mb-2">
+                <label for="make_model" class="form-label">Make/Model</label>
+                <input type="text" class="form-control" id="make_model" name="make_model"
+                      value="{{ selected_racket.make_model }}">
+              </div>
+              <!-- Serial -->
+              <div class="col-md-4 col-12 mb-2">
+                <label for="serial" class="form-label">Serial</label>
+                <input type="text" class="form-control" id="serial" name="serial"
+                      value="{{ selected_racket.serial }}">
+              </div>
+              <!-- Save button -->
+              <div class="col-md-2 col-12 mb-2 d-flex align-items-end">
+                <button type="submit" class="btn btn-success w-100">Save</button>
+              </div>
+              <!-- Cancel button -->
+              <div class="col-md-2 col-12 mb-2 d-flex align-items-end">
+                <button type="button" class="btn btn-secondary w-100" onclick="toggleEditForm()">Cancel</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+
+    <script>
+      function toggleEditForm() {
+        const form = document.getElementById("editForm");
+        form.style.display = (form.style.display === "none") ? "block" : "none";
+      }
+    </script>
+  {% endif %}
+
 
     <div class="row g-3 mb-3">
     <div class="table-responsive">
-    <table class="table table-sm table-striped align-middle">
+    <table class="table table-sm table-striped align-middle text-center">
         <thead class="table-dark">
         <tr>
-            <th style="padding-left:12px;">Date</th>
+            <th> </th>
+            <th>Date</th>
             <th>Mains</th>
-            <th class="text-center">Gauge</th>
-            <th class="text-center">Tension</th>
+            <th>Gauge</th>
+            <th>Tens (kg)</th>
             <th>Crosses</th>
-            <th class="text-center">Gauge</th>
-            <th class="text-center">Tension</th>
-            <th style="padding-right:12px;" class="text-center">Actions</th>
+            <th>Gauge</th>
+            <th>Tens (kg)</th>
+            <th style="padding-right:12px;">Actions</th>
         </tr>
         </thead>
         <tbody>
-        {% for rec in selected_racket.stringing_records %}
-        <tr>
-            <td style="padding-left:12px; font-size:.875rem; width:50px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-            {{ rec.date }}
-            </td>
-            <td style="font-size:.875rem;">{{ rec.mains }}</td>
-            <td class="text-center" style="font-size:.875rem;">{{ rec.m_gauge }}</td>
-            <td class="text-center" style="font-size:.875rem;">{{ rec.m_tension }}</td>
-            <td style="font-size:.875rem;">{{ rec.crosses }}</td>
-            <td class="text-center" style="font-size:.875rem;">{{ rec.c_gauge }}</td>
-            <td class="text-center" style="font-size:.875rem;">{{ rec.c_tension }}</td>
-            <td style="padding-right:12px;" class="text-center">
-            <form method="post" action="{{ url_for('stringing.delete_stringing', record_id=rec.id) }}" 
-                class="d-inline"
-                onsubmit="return confirm('Are you sure you want to delete this stringing job?');">
-            <button class="btn btn-danger btn-sm ps-2 pe-2">-</button>
-            </form>
-            </td>
-        </tr>
-        {% endfor %}
-
-        <!-- Blank row for adding a new record -->
-        <tr>
-            <form method="post" action="{{ url_for('stringing.add_stringing', racket_id=selected_racket_id) }}">
+        <!-- Blank row for adding a new record (now first row) -->
+        <tr class="table-success">
+          <form method="post" action="{{ url_for('stringing.add_stringing', racket_id=selected_racket_id) }}">
             <input type="hidden" name="racket_id" value="{{ selected_racket_id }}">
+            <td></td>
             <td><input type="date" name="date" class="form-control" style="width:auto; max-width:100px; font-size:.875rem;" required></td>
             <td><input type="text" name="mains" class="form-control"></td>
             <td><input type="text" name="m_gauge" class="form-control"></td>
@@ -187,10 +247,43 @@
             <td><input type="text" name="crosses" class="form-control"></td>
             <td><input type="text" name="c_gauge" class="form-control"></td>
             <td><input type="number" step="0.1" name="c_tension" class="form-control"></td>
-            <td class="text-center"><button class="btn btn-success btn-sm">+</button></td>
-            </form>
+            <td><button class="btn btn-success btn-sm">+</button></td>
+          </form>
         </tr>
-        </tbody>
+
+        <!-- Existing records -->
+        {% for rec in selected_racket.stringing_records %}
+        <tr id="row-{{ rec.id }}" class="{% if rec.favorite %}table-warning{% endif %};">
+          <td>
+            <form method="post" action="{{ url_for('stringing.toggle_favorite', record_id=rec.id) }}" class="d-inline">
+              <button type="submit" class="star-btn">
+                {% if rec.favorite %}
+                  <span class="star active">&#9733;</span>  <!-- filled star -->
+                {% else %}
+                  <span class="star">&#9734;</span>        <!-- outline star -->
+                {% endif %}
+              </button>
+            </form>
+          </td>
+          <td style="font-size:.875rem; width:50px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+            {{ rec.date }}
+          </td>
+          <td style="font-size:.875rem;">{{ rec.mains }}</td>
+          <td tyle="font-size:.875rem;">{{ rec.m_gauge }}</td>
+          <td style="font-size:.875rem;">{{ rec.m_tension }}</td>
+          <td style="font-size:.875rem;">{{ rec.crosses }}</td>
+          <td style="font-size:.875rem;">{{ rec.c_gauge }}</td>
+          <td style="font-size:.875rem;">{{ rec.c_tension }}</td>
+          <td>
+            <form method="post" action="{{ url_for('stringing.delete_stringing', record_id=rec.id) }}" 
+                  class="d-inline"
+                  onsubmit="return confirm('Are you sure you want to delete this stringing job?');">
+              <button class="btn btn-danger btn-sm ps-2 pe-2">-</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
     </table>
     </div>
     {% endif %}

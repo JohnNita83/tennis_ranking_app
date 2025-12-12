@@ -1,8 +1,8 @@
-Start flask
-./start_flask.sh 
+Activate Venv
+.\venv\Scripts\Activate.ps1
 
-Start flask on a specific port
-flask run --host=0.0.0.0 --port=5050
+Start app
+python app.py
 
 workflow to push from dev to main:
 # Make sure dev is pushed

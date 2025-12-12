@@ -4,8 +4,21 @@
 <h2 style="padding-top:30px;">Matches for Tournament</h2>
 <h2 style="padding-bottom:30px;"" class="fw-bold text-success">{{ tournament_name }}</h2>
 
+{% if draw_id %}
+<a href="https://ti.tournamentsoftware.com/tournament/{{ tournament_id }}/draw/{{ draw_id }}" 
+  target="_blank" style="text-decoration: none; margin-right: 8px;" class="btn btn-secondary btn-md"> 
+  VIEW DRAW 
+</a> 
+{% endif %} 
+{% if event_id %} 
+<a href="{{ url_for('entries', tournament_id=tournament_id, event_id=event_id) }}" 
+  style="text-decoration: none;" class="btn btn-success btn-md"> 
+  VIEW ENTRIES 
+</a> 
+{% endif %}
+
 <!-- Matches Table -->
-<div class="table-responsive">
+<div class="table-responsive pt-3">
   <table class="table table-sm table-striped">
     <thead>
       <tr>

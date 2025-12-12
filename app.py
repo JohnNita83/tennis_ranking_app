@@ -1565,7 +1565,7 @@ def import_entries(tournament_id):
     # print("HIT /import_entries (start)")
     if request.method == "POST":
         draw_id = request.form.get("draw_id")
-
+        
         url = f"https://ti.tournamentsoftware.com/sport/event.aspx?id={tournament_id}&event={draw_id}"
         headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
         resp = requests.get(url, headers=headers)
@@ -1687,11 +1687,11 @@ def entries(tournament_id):
     # Convert rank to numeric helper
     rankings_df["rank_num"] = pd.to_numeric(rankings_df["rank"], errors="coerce")
 
-    # ✅ Fetch tournament_name, draw_id, and age_group from tournaments table
+    # ✅ Fetch tournament_name, draw_id, player_id and age_group from tournaments table
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
-        "SELECT close_date, tournament_name, draw_id, age_group FROM tournaments WHERE tournament_id = ?",
+        "SELECT close_date, tournament_name, draw_id, player_id, age_group FROM tournaments WHERE tournament_id = ?",
         (tournament_id,)
     )
     row = cur.fetchone()
@@ -1700,6 +1700,7 @@ def entries(tournament_id):
     close_date = row["close_date"] if row else None
     tournament_name = row["tournament_name"] if row else ""
     draw_id = row["draw_id"] if row else None
+    player_id = row["player_id"] if row else None
     tournament_age_group = row["age_group"] if row else None
 
     # Decide target week
@@ -1843,6 +1844,7 @@ def entries(tournament_id):
         entries=entries,
         tournament_name=tournament_name,
         draw_id=draw_id,
+        player_id=player_id,
         tournament_age_group=tournament_age_group,
     )
 
@@ -1922,13 +1924,19 @@ def matches(tournament_id, player_id):
         conn.commit()
         conn.close()
 
-    # --- Get tournament_name from DB ---
+    # --- Get tournament_name, draw_id, event_id from DB ---
     conn = get_db_connection()
     cur = conn.cursor()
-    cur.execute("SELECT tournament_name FROM tournaments WHERE tournament_id=?", (tournament_id,))
+    cur.execute(
+        "SELECT tournament_name, draw_id, event_id FROM tournaments WHERE tournament_id=?",
+        (tournament_id,)
+    )
     row = cur.fetchone()
     conn.close()
-    tournament_name = row[0] if row else f"Tournament {tournament_id}"
+
+    tournament_name = row["tournament_name"] if row else f"Tournament {tournament_id}"
+    draw_id = row["draw_id"] if row else None
+    event_id = row["event_id"] if row else None
 
     # --- Build stat_summary: Singles, Doubles, Total ---
     def extract_wl(cells):
@@ -1954,7 +1962,7 @@ def matches(tournament_id, player_id):
 
     # Compute totals
     total_won = singles_won_summary + doubles_won_summary
-    total_lost = singles_lost_summary + doubles_lost_summary
+    total_lost = singles_won_summary + doubles_lost_summary
 
     def pct(part, total):
         return round(part / total * 100, 1) if total > 0 else 0.0
@@ -1992,8 +2000,11 @@ def matches(tournament_id, player_id):
         player_id=player_id,
         singles_won=singles_won,
         singles_lost=singles_lost,
-        stat_summary=stat_summary
+        stat_summary=stat_summary,
+        draw_id=draw_id,
+        event_id=event_id
     )
+
 
 @app.route("/categories", methods=["GET","POST"])
 def categories():
