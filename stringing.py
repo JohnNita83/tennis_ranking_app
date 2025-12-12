@@ -50,15 +50,21 @@ stringing_bp = Blueprint("stringing", __name__)
 @stringing_bp.route("/stringing")
 def stringing():
     ensure_stringing_tables()
-    player_id = request.args.get("player_id")
-    racket_id = request.args.get("racket_id")
+    player_id = request.args.get("player_id", type=int)
+    racket_id = request.args.get("racket_id", type=int)
 
     conn = get_db_connection()
-    players = conn.execute("SELECT * FROM players").fetchall()
+    players = conn.execute("SELECT * FROM players ORDER BY name ASC").fetchall()
 
     selected_player = None
     rackets = []
     selected_racket = None
+
+    # ✅ Default to Kevin Nita if no player_id is provided
+    if player_id is None:
+        kevin = conn.execute("SELECT id FROM players WHERE name = ?", ("Kevin Nita",)).fetchone()
+        if kevin:
+            player_id = kevin["id"]
 
     if player_id:
         selected_player = conn.execute(
@@ -70,7 +76,11 @@ def stringing():
                 "SELECT * FROM rackets WHERE player_id=? ORDER BY id DESC", (player_id,)
             ).fetchall()
 
-            # If a racket_id is provided, fetch that racket + its records
+            # ✅ Default to latest racket if none provided
+            if racket_id is None and rackets:
+                racket_id = rackets[0]["id"]
+
+            # Fetch racket + its records
             if racket_id:
                 racket = conn.execute(
                     "SELECT * FROM rackets WHERE id=?", (racket_id,)
@@ -95,6 +105,7 @@ def stringing():
         selected_racket=selected_racket,
         selected_racket_id=racket_id,
     )
+
 
 
 @stringing_bp.route("/add_player", methods=["POST"])
@@ -155,19 +166,40 @@ def add_stringing(racket_id):
         (racket_id, date, mains, m_gauge, m_tension, crosses, c_gauge, c_tension)
     )
     conn.commit()
-    racket_player = conn.execute("SELECT player_id FROM rackets WHERE id=?", (racket_id,)).fetchone()
+
+    racket_player = conn.execute(
+        "SELECT player_id FROM rackets WHERE id=?", (racket_id,)
+    ).fetchone()
     conn.close()
-    return redirect(url_for("stringing.stringing", player_id=racket_player["player_id"]))
+
+    # Redirect back to the stringing page, preserving racket selection
+    return redirect(
+        url_for("stringing.stringing", player_id=racket_player["player_id"], racket_id=racket_id)
+    )
 
 
 @stringing_bp.route("/delete_stringing/<int:record_id>", methods=["POST"])
 def delete_stringing(record_id):
     conn = get_db_connection()
-    racket = conn.execute("SELECT racket_id FROM stringing_records WHERE id=?", (record_id,)).fetchone()
+    racket = conn.execute(
+        "SELECT racket_id FROM stringing_records WHERE id=?", (record_id,)
+    ).fetchone()
+
     conn.execute("DELETE FROM stringing_records WHERE id=?", (record_id,))
     conn.commit()
+
     player_id = None
+    racket_id = None
     if racket:
-        player_id = conn.execute("SELECT player_id FROM rackets WHERE id=?", (racket["racket_id"],)).fetchone()["player_id"]
+        racket_id = racket["racket_id"]
+        player_id = conn.execute(
+            "SELECT player_id FROM rackets WHERE id=?", (racket_id,)
+        ).fetchone()["player_id"]
+
     conn.close()
-    return redirect(url_for("stringing.stringing", player_id=player_id))
+
+    # Redirect back to the stringing page, preserving racket selection
+    return redirect(
+        url_for("stringing.stringing", player_id=player_id, racket_id=racket_id)
+    )
+

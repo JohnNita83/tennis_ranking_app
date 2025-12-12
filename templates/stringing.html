@@ -5,7 +5,7 @@
 <div class="row g-3 mb-4">
   <!-- Select Player card (1/3 width) -->
   <div class="col-md-4 col-12">
-    <div class="card h-100 shadow-sm">
+    <div class="card h-100 w-100 shadow-sm">
       <div class="card-body">
         <h5 class="card-title">Select player</h5>
         <label for="playerSelect" class="form-label">Player</label>
@@ -25,7 +25,7 @@
 
   <!-- Add Player card (2/3 width, divided into 2 columns) -->
 <div class="col-md-8 col-12">
-  <div class="card h-100 shadow-sm">
+  <div class="card h-100 w-100 shadow-sm">
     <div class="card-body">
       <h5 class="card-title">Add or manage player</h5>
       <div class="row g-2 align-items-end">
@@ -59,13 +59,16 @@
     </div>
   </div>
 </div>
+</div>
 
   {% if selected_player %}
-  <h4 class="mb-4 mt-4">Stringing jobs for {{ selected_player.name }}</h4>
+  <h4 class="mt-3 mb-3">Rackets for 
+    <span class="text-success">{{ selected_player.name }}</span>
+  </h4>
 
-  <div class="row g-3 mb-4">
+  <div class="row g-3 mb-3">
   <!-- Select Racket card (1/3 width) -->
-  <div class="col-md-4 col-12">
+  <div class="col-md-4 col-12 order-2 order-md-1">
     <div class="card h-100 shadow-sm">
       <div class="card-body">
         <h5 class="card-title">Select racket</h5>
@@ -76,7 +79,7 @@
           {% for racket in rackets %}
             <option value="{{ racket.id }}"
               {% if racket.id == selected_racket_id %}selected{% endif %}>
-              {{ racket.make_model }} ({{ racket.serial or 'no serial' }})
+              {{ racket.make_model }} {% if racket.serial %}({{ racket.serial }}){% endif %}
             </option>
           {% endfor %}
         </select>
@@ -84,15 +87,15 @@
     </div>
   </div>
 
-  <!-- Add Racket card (2/3 width, divided into 3 columns) -->
-  <div class="col-md-8 col-12">
-    <div class="card h-100 shadow-sm">
+  <!-- Add Racket card (2/3 width) -->
+  <div class="col-md-8 col-12 order-1 order-md-2">
+    <div class="card h-100 w-100 shadow-sm">
       <div class="card-body">
         <h5 class="card-title">Add racket</h5>
         <form method="post" action="{{ url_for('stringing.add_racket', player_id=selected_player_id) }}" class="row g-2 align-items-end">
 
           <!-- Make/Model -->
-          <div class="col-md-4">
+          <div class="col-md-6">
             <label class="form-label">Make/Model</label>
             <input type="text" name="make_model" class="form-control" placeholder="e.g. Wilson Blade" required>
           </div>
@@ -104,7 +107,7 @@
           </div>
 
           <!-- Add button -->
-          <div class="col-md-4">
+          <div class="col-md-2">
             <button type="submit" class="btn btn-success w-100">
               + Racket
             </button>
@@ -116,15 +119,17 @@
   </div>
 </div>
 
+
   {% if selected_racket_id %}
     {% if selected_racket %}
-    <div class="mt-3 d-flex align-items-center justify-content-between">
-    <h5 class="fw-bold mb-0">
-        Selected racket: {{ selected_racket.make_model }}
+    <div class=" mt-3 mb-3 d-flex align-items-center justify-content-between">
+    <h4>
+        Stringing for:<br>
+        <span class="text-success">{{ selected_racket.make_model }}</span>
         {% if selected_racket.serial %}
-        <small class="text-muted">({{ selected_racket.serial }})</small>
+          <small class="text-muted">({{ selected_racket.serial }})</small>
         {% endif %}
-    </h5>
+    </h4>
 
     <!-- Delete racket button -->
     <form method="post" action="{{ url_for('stringing.delete_racket', racket_id=selected_racket.id) }}"
@@ -134,24 +139,25 @@
     </div>
     {% endif %}
 
-    <div class="table-responsive mt-3">
+    <div class="row g-3 mb-3">
+    <div class="table-responsive">
     <table class="table table-sm table-striped align-middle">
         <thead class="table-dark">
         <tr>
-            <th>Date</th>
+            <th style="padding-left:12px;">Date</th>
             <th>Mains</th>
             <th class="text-center">Gauge</th>
             <th class="text-center">Tension</th>
             <th>Crosses</th>
             <th class="text-center">Gauge</th>
             <th class="text-center">Tension</th>
-            <th class="text-center">Actions</th>
+            <th style="padding-right:12px;" class="text-center">Actions</th>
         </tr>
         </thead>
         <tbody>
         {% for rec in selected_racket.stringing_records %}
         <tr>
-            <td style="font-size:.875rem; width:50px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+            <td style="padding-left:12px; font-size:.875rem; width:50px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
             {{ rec.date }}
             </td>
             <td style="font-size:.875rem;">{{ rec.mains }}</td>
@@ -160,7 +166,7 @@
             <td style="font-size:.875rem;">{{ rec.crosses }}</td>
             <td class="text-center" style="font-size:.875rem;">{{ rec.c_gauge }}</td>
             <td class="text-center" style="font-size:.875rem;">{{ rec.c_tension }}</td>
-            <td class="text-center">
+            <td style="padding-right:12px;" class="text-center">
             <form method="post" action="{{ url_for('stringing.delete_stringing', record_id=rec.id) }}" 
                 class="d-inline"
                 onsubmit="return confirm('Are you sure you want to delete this stringing job?');">
@@ -172,7 +178,8 @@
 
         <!-- Blank row for adding a new record -->
         <tr>
-            <form method="post" action="{{ url_for('stringing.add_stringing', racket_id=selected_racket.id) }}">
+            <form method="post" action="{{ url_for('stringing.add_stringing', racket_id=selected_racket_id) }}">
+            <input type="hidden" name="racket_id" value="{{ selected_racket_id }}">
             <td><input type="date" name="date" class="form-control" style="width:auto; max-width:100px; font-size:.875rem;" required></td>
             <td><input type="text" name="mains" class="form-control"></td>
             <td><input type="text" name="m_gauge" class="form-control"></td>

@@ -247,6 +247,7 @@ def bootstrap_db():
         except Exception as e:
             print(f"Bootstrap failed: {e}")
         _bootstrapped = True
+        
 
 def reset_categories_table():
     conn = get_db_connection()
@@ -552,6 +553,17 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         (player_name, age_group),
     )
     db_rows = cur.fetchall()
+    
+    cur.execute(
+        """
+        SELECT Week, wtn
+        FROM rankings
+        WHERE Player = ?
+        ORDER BY Week
+        """,
+        (player_name,)
+    )
+    ranking_rows = cur.fetchall()
     conn.close()
 
     def fetch_event_wl_stats(tournament_id: str, player_id: str):
@@ -824,25 +836,43 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
     won_pct = (total_won / total_matches * 100) if total_matches > 0 else 0
     lost_pct = (total_lost / total_matches * 100) if total_matches > 0 else 0
 
+    def parse_week_label(label: str):
+        try:
+            wk, yr = label.split("-")
+            return int(yr), int(wk)
+        except Exception:
+            return (9999, 9999)
+
     latest_week = None
     latest_rank = None
     if rankings_map:
-        def parse_week_label(label: str):
-            wk, yr = label.split("-")
-            return int(yr), int(wk)
         latest_week = max(rankings_map.keys(), key=parse_week_label)
         latest_rank = rankings_map[latest_week]
 
     best_rank = None
     best_rank_week = None
     if rankings_map:
-        # find the lowest (best) rank value
         best_rank = min(rankings_map.values())
-        # find the week(s) where that rank occurred
         for wk, val in rankings_map.items():
             if val == best_rank:
                 best_rank_week = wk
                 break
+
+    wtn_map = {r["Week"]: r["WTN"] for r in ranking_rows if r["WTN"] is not None}
+
+    latest_wtn = None
+    best_wtn = None
+    best_wtn_week = None
+    if wtn_map:
+        latest_wtn_week = max(wtn_map.keys(), key=parse_week_label)
+        latest_wtn = wtn_map[latest_wtn_week]
+
+        best_wtn = min(wtn_map.values())
+        for wk, val in wtn_map.items():
+            if val == best_wtn:
+                best_wtn_week = wk
+                break
+
 
     # --- Build global stat_summary across all tournaments ---
     def pct(part, total):
@@ -909,6 +939,9 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         "latest_week": latest_week,
         "best_rank": best_rank,
         "best_rank_week": best_rank_week,
+        "latest_wtn": latest_wtn,
+        "best_wtn": best_wtn,
+        "best_wtn_week": best_wtn_week,
         "category_summary": filtered_summary,
         "grand_total": grand_total,
         "stat_summary": stat_summary,
@@ -1472,6 +1505,9 @@ def tournaments():
         latest_rank=view["latest_rank"], 
         best_rank=view["best_rank"],
         best_rank_week=view["best_rank_week"],
+        latest_wtn=view["latest_wtn"],
+        best_wtn=view["best_wtn"],
+        best_wtn_week=view["best_wtn_week"],
         stat_summary=view["stat_summary"],
         domestic_columns=view["domestic_columns"], 
         international_columns=view["international_columns"]
@@ -1991,6 +2027,13 @@ def player():
     name = request.args.get("name", "Kevin Nita").strip()
     age_group = request.args.get("age_group", "BS14")  # selected age group from query string
 
+    def parse_week(w):
+        try:
+            week_num, year = w.split("-")
+            return (int(year), int(week_num))
+        except Exception:
+            return (9999, 9999)
+
     if not name:
         # simple form on the same page
         return render_template("player.html", name=None, rows=[], age_groups=AGE_GROUPS)
@@ -1999,7 +2042,7 @@ def player():
     cur = conn.cursor()
     cur.execute(
         """
-        SELECT Week, AgeGroup, Rank, Player, [Ranking points], [Total points]
+        SELECT Week, AgeGroup, Rank, Player, wtn, [Ranking points], [Total points]
         FROM rankings
         WHERE Player = ?
         ORDER BY Week, AgeGroup
@@ -2009,6 +2052,43 @@ def player():
     rows = cur.fetchall()
     conn.close()
 
+    # --- Build WTN timeline
+    wtn_weeks = []
+    wtn_values = []
+    for r in rows:
+        if r["WTN"] is not None:
+            wtn_weeks.append(r["Week"])
+            wtn_values.append(float(r["WTN"]))
+    wtn_weeks = wtn_weeks[::4]
+    wtn_values = wtn_values[::4]
+    if wtn_weeks and wtn_values:
+        sorted_pairs = sorted(zip(wtn_weeks, wtn_values), key=lambda x: parse_week(x[0]))
+        wtn_weeks, wtn_values = zip(*sorted_pairs)
+
+    wtn_plot_json = None
+    if wtn_weeks and wtn_values:
+        wtn_fig = go.Figure(
+            data=[
+                go.Scatter(
+                    x=wtn_weeks,
+                    y=wtn_values,
+                    mode="lines+markers",
+                    line=dict(color="blue", width=3),
+                    marker=dict(size=8),
+                    textposition="top center"
+                )
+            ],
+            layout=go.Layout(
+                title=f"WTN Evolution for {name}",
+                xaxis=dict(title="Week", tickangle=-45),
+                yaxis=dict(title="WTN", autorange="reversed"),
+                margin=dict(l=40, r=20, t=50, b=80),
+                height=400
+            )
+        )
+        wtn_plot_json = json.dumps(wtn_fig, cls=plotly.utils.PlotlyJSONEncoder)
+
+
     # --- Build weekly series for the selected age group ---
     weeks = []
     ranks = []
@@ -2017,13 +2097,6 @@ def player():
             if r["AgeGroup"] == age_group and r["Rank"] is not None:
                 weeks.append(r["Week"])
                 ranks.append(int(r["Rank"]))
-
-    def parse_week(w):
-        try:
-            week_num, year = w.split("-")
-            return (int(year), int(week_num))
-        except Exception:
-            return (9999, 9999)
 
     if weeks and ranks:
         sorted_pairs = sorted(zip(weeks, ranks), key=lambda x: parse_week(x[0]))
@@ -2134,6 +2207,7 @@ def player():
         plot_json=plot_json,
         bar_plot_json=bar_plot_json,
         cat_bar_plot_json=cat_bar_plot_json,
+        wtn_plot_json=wtn_plot_json,
         category_summary=tournament_data["category_summary"],  
         grand_total=tournament_data["grand_total"],
         cat_ranking_points=tournament_data["cat_ranking_points"],
@@ -2141,6 +2215,9 @@ def player():
         latest_week=tournament_data["latest_week"],
         best_rank=tournament_data["best_rank"],
         best_rank_week=tournament_data["best_rank_week"],
+        latest_wtn=tournament_data["latest_wtn"],
+        best_wtn=tournament_data["best_wtn"],
+        best_wtn_week=tournament_data["best_wtn_week"],
     )
 
 

@@ -55,9 +55,12 @@
     </form>
     <div class="alert alert-info mb-3 text-muted">
       Current ranking: <strong>{{ latest_rank if latest_rank else "&mdash;"|safe }}</strong>
+      & WTN: <strong>{{ latest_wtn|float|round(1) if latest_wtn else "&mdash;"|safe }}</strong>
       {% if latest_week %} ({{ latest_week }}){% endif %}<br>
       Best ranking: <strong>{{ best_rank if best_rank else "&mdash;"|safe }}</strong>
-      {% if best_rank_week %} on week <strong>{{ best_rank_week }}</strong>{% endif %}
+      {% if best_rank_week %} on week <strong>{{ best_rank_week }}</strong>{% endif %} <br>
+      Best WTN: <strong>{{ best_wtn|float|round(1) if best_wtn else "&mdash;"|safe }}</strong>
+      {% if best_wtn_week %} on week <strong>{{ best_wtn_week }}</strong>{% endif %}
     </div>
   </div>
 </div>
@@ -78,6 +81,24 @@
 {% else %}
 <p class="text-muted">No ranking data found for {{ name }} in {{ age_group }}.</p>
 {% endif %}
+
+<!-- ✅ WTN evolution chart section -->
+{% if wtn_plot_json %}
+<div class="card shadow-sm mb-3">
+  <div class="card-body">
+    <h6 class="card-title mb-3" style="color:white">WTN Evolution</h6>
+    <div id="wtn-chart"></div>
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script>
+      const wtn_fig = {{ wtn_plot_json | safe }};
+      Plotly.newPlot('wtn-chart', wtn_fig.data, wtn_fig.layout, {responsive: true});
+    </script>
+  </div>
+</div>
+{% else %}
+<p class="text-muted">No WTN data found for {{ name }}.</p>
+{% endif %}
+
 
 <!-- ✅ Tournament detailed table by category -->
 <div class="col-12 mb-3">
