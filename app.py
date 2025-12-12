@@ -27,6 +27,12 @@ from stringing import stringing_bp
 from config import DATABASE
 
 
+# Quick startup check
+with sqlite3.connect(DATABASE) as conn:
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM sqlite_schema;")
+    print("Tables in DB:", cur.fetchone()[0], flush=True)
+
 COOKIE_FILE = Path(__file__).with_name("cookie.txt")
 
 def load_cookie() -> str:
@@ -36,15 +42,17 @@ def load_cookie() -> str:
         return ""
 
 # DB_PATH = "rankings.db"
-print("Using DB:", DATABASE)
 
 # Age groups we support
 AGE_GROUPS = ["BS12", "BS14", "BS16", "BS18", "GS12", "GS14", "GS16", "GS18"]
 
 def get_db_connection():
+    from config import DATABASE
+    print("Connecting to DB:", DATABASE, flush=True)  # flush ensures it hits logs
     conn = sqlite3.connect(DATABASE, timeout=10)
     conn.row_factory = sqlite3.Row
     return conn
+
 
 def ensure_categories_table():
     conn = get_db_connection()
