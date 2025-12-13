@@ -3,7 +3,7 @@ from update_current_week import update_current_week as run_update
 from flask import Flask, render_template, request, redirect, url_for
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from pathlib import Path
-from datetime import datetime, date, timedelta
+from datetime import datetime, date, timezone, timedelta
 from tournament_fetcher import fetch_tournament_details
 from ranking_fetcher import fetch_category_for_week
 import pandas as pd
@@ -357,7 +357,7 @@ def add_ranking_week(week_id: str, week_label: str | None = None):
             combined["Week"] = week_label
 
     # Add / update UpdatedAt
-    combined["UpdatedAt"] = datetime.utcnow().isoformat(timespec="seconds")
+    combined["UpdatedAt"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
     conn = get_db_connection()
     cur = conn.cursor()
@@ -532,6 +532,120 @@ def fetch_singles_stats(tournament_id: str, player_id: str):
     return None, None
 
 
+def fetch_event_wl_stats(tournament_id: str, player_id: str) -> dict:
+    """
+    Return win/loss stats for a player in a tournament.
+    Uses wl_stats cache table; scrapes TI only if missing or stale (<1 day old).
+    """
+    import requests
+    from bs4 import BeautifulSoup
+    from datetime import datetime, timedelta
+    import sqlite3
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Ensure cache table exists
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS wl_stats (
+            tournament_id TEXT,
+            player_id TEXT,
+            singles_wins INTEGER,
+            singles_losses INTEGER,
+            doubles_wins INTEGER,
+            doubles_losses INTEGER,
+            updated_at TEXT,
+            PRIMARY KEY (tournament_id, player_id)
+        )
+    """)
+    conn.commit()
+
+    # Check cache
+    cur.execute(
+        "SELECT singles_wins, singles_losses, doubles_wins, doubles_losses, updated_at "
+        "FROM wl_stats WHERE tournament_id=? AND player_id=?",
+        (tournament_id, player_id)
+    )
+    row = cur.fetchone()
+
+    if row:
+        singles_wins, singles_losses, doubles_wins, doubles_losses, updated_at = row
+        try:
+            if datetime.fromisoformat(updated_at) > datetime.now(timezone.utc) - timedelta(days=1):
+                conn.close()
+                return {
+                    "singles": (singles_wins, singles_losses),
+                    "doubles": (doubles_wins, doubles_losses),
+                }
+        except Exception:
+            pass  # fall through to re-fetch if parsing fails
+
+    # Scrape live if cache missing/stale
+    url = f"https://ti.tournamentsoftware.com/tournament/{tournament_id}/player/{player_id}"
+    headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
+    result = {"singles": (0, 0), "doubles": (0, 0)}
+
+    try:
+        resp = requests.get(url, headers=headers, timeout=5)
+        resp.raise_for_status()
+    except requests.exceptions.Timeout:
+        print(f"[WARN] Timeout fetching stats for {tournament_id}/{player_id}", flush=True)
+        conn.close()
+        return result
+    except requests.exceptions.RequestException as e:
+        print(f"[WARN] Request error fetching {url}: {e}", flush=True)
+        conn.close()
+        return result
+
+    try:
+        soup = BeautifulSoup(resp.text, "html.parser")
+        stats_table = soup.select_one(".module.module--card .table--new")
+        if stats_table:
+            def parse_wl(text: str):
+                try:
+                    wl_part = text.split()[0]
+                    if "-" in wl_part:
+                        w, l = wl_part.split("-")
+                        return int(w), int(l)
+                except Exception as e:
+                    print(f"[DEBUG] parse_wl error: {e} on text={text}", flush=True)
+                return 0, 0
+
+            for row in stats_table.select("tbody tr"):
+                tds = [td.get_text(strip=True) for td in row.select("td")]
+                if not tds or len(tds) < 3:
+                    continue
+                label = tds[0].lower()
+                wl_text = tds[2]
+                if label == "singles":
+                    result["singles"] = parse_wl(wl_text)
+                elif label == "doubles":
+                    result["doubles"] = parse_wl(wl_text)
+
+    except Exception as e:
+        print(f"[ERROR] Parsing error for {tournament_id}/{player_id}: {e}", flush=True)
+
+    # Update cache
+    cur.execute(
+        "INSERT OR REPLACE INTO wl_stats "
+        "(tournament_id, player_id, singles_wins, singles_losses, doubles_wins, doubles_losses, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            tournament_id,
+            player_id,
+            result["singles"][0],
+            result["singles"][1],
+            result["doubles"][0],
+            result["doubles"][1],
+            datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        )
+    )
+    conn.commit()
+    conn.close()
+
+    return result
+
+
 
 def build_tournament_view(player_name: str, age_group: str) -> dict:
     ensure_tournaments_table()
@@ -585,49 +699,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
     ranking_rows = cur.fetchall()
     conn.close()
 
-    def fetch_event_wl_stats(tournament_id: str, player_id: str):
-        import requests
-        from bs4 import BeautifulSoup
-
-        url = f"https://ti.tournamentsoftware.com/tournament/{tournament_id}/player/{player_id}"
-        headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
-        resp = requests.get(url, headers=headers, timeout=10)
-        resp.raise_for_status()
-
-        soup = BeautifulSoup(resp.text, "html.parser")
-        stats_table = soup.select_one(".module.module--card .table--new")
-        result = {"singles": (0, 0), "doubles": (0, 0)}
-
-        if not stats_table:
-            # print(f"[DEBUG] No stats table found for {tournament_id}/{player_id}")
-            return result
-
-        def parse_wl(text: str):
-            try:
-                wl_part = text.split()[0]
-                if "-" in wl_part:
-                    w, l = wl_part.split("-")
-                    return int(w), int(l)
-            except Exception as e:
-                # print(f"[DEBUG] parse_wl error: {e} on text={text}")
-                return 0, 0
-
-        for row in stats_table.select("tbody tr"):
-            tds = [td.get_text(strip=True) for td in row.select("td")]
-            # print(f"[DEBUG] Row cells: {tds}")  # <-- see what’s being parsed
-            if not tds or len(tds) < 3:
-                continue
-            label = tds[0].lower()
-            wl_text = tds[2]
-            if label == "singles":
-                result["singles"] = parse_wl(wl_text)
-            elif label == "doubles":
-                result["doubles"] = parse_wl(wl_text)
-
-        # print(f"[DEBUG] Parsed stats for {tournament_id}/{player_id}: {result}")
-        return result
-
-
+    
     
     def parse_date_safe(s):
         try:
@@ -662,13 +734,13 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         singles_won = singles_lost = doubles_won = doubles_lost = 0
 
         if r["tournament_id"] and not r["is_international"] and r["player_id"]:
-            # Domestic: scrape stats
+            # Domestic: use cached wl_stats
             wl_stats = fetch_event_wl_stats(r["tournament_id"], r["player_id"])
             singles_won, singles_lost = wl_stats.get("singles", (0, 0))
             doubles_won, doubles_lost = wl_stats.get("doubles", (0, 0))
             won, lost = singles_won, singles_lost
         else:
-            # International: fall back to manually entered DB values
+            # International/manual: use DB values
             singles_won = r["won"] if r["won"] is not None else 0
             singles_lost = r["lost"] if r["lost"] is not None else 0
             won, lost = singles_won, singles_lost
@@ -995,6 +1067,83 @@ def get_latest_week_for_age_group(age_group):
         return None
     return rows[-1]["Week"]
 
+
+def fetch_entries(tournament_id: str) -> list[dict]:
+    """
+    Fetch entries for a tournament.
+    - Before the start date: scrape live and return fresh entries.
+    - After the start date: return cached entries from DB if available.
+    """
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Ensure entries table exists
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS entries (
+            tournament_id TEXT,
+            data TEXT,          -- JSON string of entries
+            updated_at TEXT,
+            PRIMARY KEY (tournament_id)
+        )
+    """)
+    conn.commit()
+
+    # Get tournament start date from tournaments table
+    cur.execute("SELECT start_date FROM tournaments WHERE tournament_id=?", (tournament_id,))
+    row = cur.fetchone()
+    start_date = None
+    if row and row[0]:
+        try:
+            start_date = datetime.fromisoformat(row[0])
+            # attach UTC tz if naive
+            if start_date.tzinfo is None:
+                start_date = start_date.replace(tzinfo=timezone.utc)
+        except Exception:
+            start_date = None
+
+
+    print(f"[DEBUG] start_date raw={row[0]}, parsed={start_date}, now={datetime.now(timezone.utc)}", flush=True)
+
+    # If tournament has started, try cached entries
+    if start_date and datetime.now(timezone.utc) >= start_date:
+        cur.execute("SELECT data FROM entries WHERE tournament_id=?", (tournament_id,))
+        cached = cur.fetchone()
+        if cached:
+            print(f"[INFO] Returning cached entries for {tournament_id}", flush=True)
+            import json
+            conn.close()
+            return json.loads(cached[0])
+        else:
+            print(f"[DEBUG] No cached entries found for {tournament_id}", flush=True)
+
+    # Otherwise scrape live
+    event_id = request.args.get("event_id", type=int)
+    url = f"https://ti.tournamentsoftware.com/sport/event.aspx?id={tournament_id}&event={event_id}"
+    headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
+    try:
+        resp = requests.get(url, headers=headers, timeout=5)
+        resp.raise_for_status()
+    except Exception as e:
+        print(f"[WARN] Failed to fetch entries for {tournament_id}: {e}", flush=True)
+        conn.close()
+        return []
+
+    entries = extract_entries(resp.text)
+
+    # If tournament has started, cache the entries
+    if start_date and datetime.now(timezone.utc) >= start_date:
+        import json
+        cur.execute(
+            "INSERT OR REPLACE INTO entries (tournament_id, data, updated_at) VALUES (?, ?, ?)",
+            (tournament_id, json.dumps(entries), datetime.now(timezone.utc).isoformat(timespec="seconds"))
+        )
+        conn.commit()
+
+    conn.close()
+    return entries
+
+
 def extract_entries(html):
     soup = BeautifulSoup(html, "html.parser")
     tables = pd.read_html(str(soup))
@@ -1255,18 +1404,18 @@ def database_admin():
                 reset_rankings_table()
                 status = "Rankings table erased. Run an update or add a week to recreate it."
 
-            elif action == "add_week":   # 👈 place the block here
+            elif action == "add_week":
                 week_id = request.form.get("week_id", "").strip()
                 week_label = request.form.get("week_label", "").strip()
 
                 if not week_id:
                     error = "Week ID is required."
+                elif not week_label:
+                    error = "Week label is required."
                 else:
-                    add_ranking_week(week_id, week_label or None)
-                    if week_label:
-                        status = f"Ranking week '{week_label}' added from WeekID {week_id}."
-                    else:
-                        status = f"Ranking week added from WeekID {week_id}."
+                    add_ranking_week(week_id, week_label)
+                    status = f"Ranking week '{week_label}' added from WeekID {week_id}."
+
         except Exception as e:
             error = f"Error: {e}"
 
@@ -1454,7 +1603,7 @@ def tournaments():
         tournament_id = request.form.get("tournament_id", "").strip()
         if tournament_id:
             details = fetch_tournament_details(tournament_id)
-            now = datetime.utcnow().isoformat(timespec="seconds")
+            now = datetime.now(timezone.utc).isoformat(timespec="seconds")
             conn = get_db_connection()
             cur = conn.cursor()
             cur.execute(
@@ -1485,7 +1634,7 @@ def tournaments():
 
     # Add international/manual tournament (blank row)
     if request.method == "POST" and action == "add_international":
-        now = datetime.utcnow().isoformat(timespec="seconds")
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute(
@@ -1554,35 +1703,30 @@ def entries_page():
     tournament_id = request.args.get("tournament_id")
     event_id = request.args.get("event_id", type=int)
 
-    url = f"https://ti.tournamentsoftware.com/sport/event.aspx?id={tournament_id}&event={event_id}"
-    headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
-    resp = requests.get(url, headers=headers, timeout=10)
-    resp.raise_for_status()
+    if not tournament_id or not event_id:
+        return "Missing tournament_id or event_id", 400
 
-    # --- Load entries via pandas ---
-    tables = pd.read_html(resp.text)
-    entries_df = tables[1]  # adjust index if needed
-    entries_df = entries_df.rename(columns={"Player": "player"})
-    entries_df["player_norm"] = entries_df["player"].apply(normalize_name)
+    # 🔄 Use cached helper instead of scraping directly
+    entries = fetch_entries(tournament_id)
+    entries_df = pd.DataFrame(entries)
 
     # Load rankings
-    rankings_df = load_rankings()
+    rankings_df = load_rankings().copy()
     rankings_df["name_norm"] = rankings_df["name"].apply(normalize_name)
 
+    # ✅ Fill NaN in the seed column
+    if "seed" in entries_df.columns:
+        entries_df["seed"] = entries_df["seed"].fillna("").astype(str).replace("nan", "")
 
-    # --- Return something to the browser ---
-    # Option A: render a template
+    # --- Return to browser ---
     return render_template(
         "entries.html",
+        tournament_id=tournament_id,
+        event_id=event_id,
         entries=entries_df.to_dict(orient="records"),
         rankings=rankings_df.to_dict(orient="records")
     )
 
-    # Option B: return JSON for quick testing
-    # return jsonify({
-    #     "entries": entries_df.to_dict(orient="records"),
-    #     "rankings": rankings_df.to_dict(orient="records")
-    # })
 
 @app.route("/import_entries/<tournament_id>", methods=["GET", "POST"])
 def import_entries(tournament_id):
@@ -1687,12 +1831,17 @@ def entries(tournament_id):
     if not event_id:
         return "Missing event_id", 400
 
-    url = f"https://ti.tournamentsoftware.com/sport/event.aspx?id={tournament_id}&event={event_id}"
-    headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
-    resp = requests.get(url, headers=headers, timeout=10)
+    # 🔄 Use cached helper instead of scraping directly
+    entries = fetch_entries(tournament_id)
 
-    tables = pd.read_html(resp.text)
-    entries_df = tables[1].copy()
+    # Convert list of dicts into DataFrame for downstream merging/sorting
+    entries_df = pd.DataFrame(entries)
+    
+    # If you want to keep consistent column names for later logic
+    entries_df.rename(
+        columns={"draw": "Draw", "player": "Player", "seed": "Seed"},
+        inplace=True
+    )
 
     # Fix column names: Unnamed:0 is actually the Draw column
     entries_df.rename(columns={"Unnamed: 0": "Draw", "Player": "player"}, inplace=True)
@@ -1728,7 +1877,7 @@ def entries(tournament_id):
     tournament_age_group = row["age_group"] if row else None
 
     # Decide target week
-    today = datetime.utcnow().date()
+    today = datetime.now(timezone.utc).date()
     if close_date:
         close_date_obj = datetime.fromisoformat(close_date).date()
         if today < close_date_obj:
@@ -1780,7 +1929,7 @@ def entries(tournament_id):
 
     # Clean Seed column: replace NaN with empty string
     if "Seed" in merged_df.columns:
-        merged_df["Seed"] = merged_df["Seed"].fillna("")
+        merged_df["Seed"] = merged_df["Seed"].fillna("").astype(str).replace("nan", "")
 
     # Replace NaN in all other ranking columns with "N/A"
     ranking_cols = [
