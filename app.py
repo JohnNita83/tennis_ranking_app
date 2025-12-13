@@ -1310,8 +1310,6 @@ def points():
     # Merge in desired order for the points table
     point_columns = domestic_sorted + international_sorted
 
-    # print("=== DEBUG point_columns ===", point_columns)
-
     points_map = load_points_map(point_columns)
 
     if request.method == "POST":
@@ -1325,13 +1323,23 @@ def points():
             display = request.form["new_display"].strip()
             type_ = request.form["new_type"]
 
-            # insert new category
-            cur.execute(
-                "INSERT INTO categories (code, display_name, type, deleted) VALUES (?, ?, ?, 0)",
-                (code, display, type_)
-            )
-            # add column to points table
-            cur.execute(f'ALTER TABLE points ADD COLUMN "{code}" INTEGER')
+            # check if category already exists (even if deleted)
+            cur.execute("SELECT deleted FROM categories WHERE code = ?", (code,))
+            row = cur.fetchone()
+            if row:
+                # if it exists but is marked deleted, undelete it
+                cur.execute(
+                    "UPDATE categories SET display_name = ?, type = ?, deleted = 0 WHERE code = ?",
+                    (display, type_, code)
+                )
+            else:
+                # insert new category
+                cur.execute(
+                    "INSERT INTO categories (code, display_name, type, deleted) VALUES (?, ?, ?, 0)",
+                    (code, display, type_)
+                )
+                # add column to points table
+                cur.execute(f'ALTER TABLE points ADD COLUMN "{code}" INTEGER')
 
         elif action == "delete_category":
             code = request.form["delete_code"]
@@ -1359,11 +1367,9 @@ def points():
     cur = conn.cursor()
     cur.execute("SELECT * FROM points ORDER BY Place;")
     rows = cur.fetchall()
-    # print(rows)
     conn.close()
 
     saved = request.args.get("saved") == "1"
-    
 
     return render_template(
         "points.html",
