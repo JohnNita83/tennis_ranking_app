@@ -510,7 +510,7 @@ def fetch_singles_stats(tournament_id: str, player_id: str):
 
     url = f"https://ti.tournamentsoftware.com/tournament/{tournament_id}/player/{player_id}"
     headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
-    resp = requests.get(url, headers=headers)
+    resp = requests.get(url, headers=headers, timeout=10)
     resp.raise_for_status()
 
     soup = BeautifulSoup(resp.text, "html.parser")
@@ -591,7 +591,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
 
         url = f"https://ti.tournamentsoftware.com/tournament/{tournament_id}/player/{player_id}"
         headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
-        resp = requests.get(url, headers=headers)
+        resp = requests.get(url, headers=headers, timeout=10)
         resp.raise_for_status()
 
         soup = BeautifulSoup(resp.text, "html.parser")
@@ -1550,7 +1550,7 @@ def entries_page():
 
     url = f"https://ti.tournamentsoftware.com/sport/event.aspx?id={tournament_id}&event={event_id}"
     headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
-    resp = requests.get(url, headers=headers)
+    resp = requests.get(url, headers=headers, timeout=10)
     resp.raise_for_status()
 
     # --- Load entries via pandas ---
@@ -1586,7 +1586,7 @@ def import_entries(tournament_id):
         
         url = f"https://ti.tournamentsoftware.com/sport/event.aspx?id={tournament_id}&event={draw_id}"
         headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
-        resp = requests.get(url, headers=headers)
+        resp = requests.get(url, headers=headers, timeout=10)
 
         # Parse tables (raw)
         tables = pd.read_html(resp.text)
@@ -1683,7 +1683,7 @@ def entries(tournament_id):
 
     url = f"https://ti.tournamentsoftware.com/sport/event.aspx?id={tournament_id}&event={event_id}"
     headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
-    resp = requests.get(url, headers=headers)
+    resp = requests.get(url, headers=headers, timeout=10)
 
     tables = pd.read_html(resp.text)
     entries_df = tables[1].copy()
@@ -1874,7 +1874,7 @@ def matches(tournament_id, player_id):
 
     url = f"https://ti.tournamentsoftware.com/tournament/{tournament_id}/player/{player_id}"
     headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
-    resp = requests.get(url, headers=headers)
+    resp = requests.get(url, headers=headers, timeout=10)
     resp.raise_for_status()
 
     soup = BeautifulSoup(resp.text, "html.parser")
