@@ -505,8 +505,6 @@ def get_week_label_for_date(d: date) -> str:
 
 def fetch_singles_stats(tournament_id: str, player_id: str):
     """Fetch Singles stats (won/lost) from tournamentsoftware page."""
-    import requests
-    from bs4 import BeautifulSoup
 
     url = f"https://ti.tournamentsoftware.com/tournament/{tournament_id}/player/{player_id}"
     headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
@@ -537,11 +535,7 @@ def fetch_event_wl_stats(tournament_id: str, player_id: str) -> dict:
     Return win/loss stats for a player in a tournament.
     Uses wl_stats cache table; scrapes TI only if missing or stale (<1 day old).
     """
-    import requests
-    from bs4 import BeautifulSoup
-    from datetime import datetime, timedelta
-    import sqlite3
-
+   
     conn = get_db_connection()
     cur = conn.cursor()
 
@@ -559,6 +553,7 @@ def fetch_event_wl_stats(tournament_id: str, player_id: str) -> dict:
         )
     """)
     conn.commit()
+
 
     # Check cache
     cur.execute(
@@ -1071,8 +1066,10 @@ def get_latest_week_for_age_group(age_group):
 def fetch_entries(tournament_id: str) -> list[dict]:
     """
     Fetch entries for a tournament.
-    - Before the start date: scrape live and return fresh entries.
-    - After the start date: return cached entries from DB if available.
+    - If today < start_date: scrape live and return fresh entries.
+    - If today >= start_date:
+        * If cache exists and updated_at >= start_date: return cache.
+        * Else scrape fresh and cache.
     """
 
     conn = get_db_connection()
@@ -1089,35 +1086,43 @@ def fetch_entries(tournament_id: str) -> list[dict]:
     """)
     conn.commit()
 
+    # Try to add updated_at column if missing
+    try:
+        cur.execute("ALTER TABLE entries ADD COLUMN updated_at TEXT")
+        conn.commit()
+        print("[INFO] Added updated_at column to entries table", flush=True)
+    except sqlite3.OperationalError:
+        # Column already exists
+        pass
+
     # Get tournament start date from tournaments table
     cur.execute("SELECT start_date FROM tournaments WHERE tournament_id=?", (tournament_id,))
     row = cur.fetchone()
     start_date = None
     if row and row[0]:
         try:
-            start_date = datetime.fromisoformat(row[0])
-            # attach UTC tz if naive
-            if start_date.tzinfo is None:
-                start_date = start_date.replace(tzinfo=timezone.utc)
+            start_date = datetime.fromisoformat(row[0]).date()
         except Exception:
             start_date = None
 
+    today = datetime.now(timezone.utc).date()
 
-    print(f"[DEBUG] start_date raw={row[0]}, parsed={start_date}, now={datetime.now(timezone.utc)}", flush=True)
-
-    # If tournament has started, try cached entries
-    if start_date and datetime.now(timezone.utc) >= start_date:
-        cur.execute("SELECT data FROM entries WHERE tournament_id=?", (tournament_id,))
+    # --- If today >= start_date, check cache ---
+    if start_date and today >= start_date:
+        cur.execute("SELECT data, updated_at FROM entries WHERE tournament_id=?", (tournament_id,))
         cached = cur.fetchone()
-        if cached:
-            print(f"[INFO] Returning cached entries for {tournament_id}", flush=True)
-            import json
-            conn.close()
-            return json.loads(cached[0])
-        else:
-            print(f"[DEBUG] No cached entries found for {tournament_id}", flush=True)
+        if cached and cached["updated_at"]:
+            try:
+                cache_date = datetime.fromisoformat(cached["updated_at"]).date()
+                if cache_date >= start_date:
+                    print(f"[INFO] Using cached entries for {tournament_id} (updated_at={cached['updated_at']})", flush=True)
+                    conn.close()
+                    return json.loads(cached["data"])
+            except Exception:
+                pass
+        print(f"[INFO] Cache missing/stale, scraping entries for {tournament_id}", flush=True)
 
-    # Otherwise scrape live
+    # --- Otherwise (today < start_date OR cache stale) scrape fresh ---
     event_id = request.args.get("event_id", type=int)
     url = f"https://ti.tournamentsoftware.com/sport/event.aspx?id={tournament_id}&event={event_id}"
     headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
@@ -1131,17 +1136,85 @@ def fetch_entries(tournament_id: str) -> list[dict]:
 
     entries = extract_entries(resp.text)
 
-    # If tournament has started, cache the entries
-    if start_date and datetime.now(timezone.utc) >= start_date:
-        import json
-        cur.execute(
-            "INSERT OR REPLACE INTO entries (tournament_id, data, updated_at) VALUES (?, ?, ?)",
-            (tournament_id, json.dumps(entries), datetime.now(timezone.utc).isoformat(timespec="seconds"))
-        )
-        conn.commit()
+    # --- Cache scraped entries ---
+    cur.execute(
+        "INSERT OR REPLACE INTO entries (tournament_id, data, updated_at) VALUES (?, ?, ?)",
+        (tournament_id, json.dumps(entries), datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    )
+    conn.commit()
+    conn.close()
+
+    return entries
+
+
+def fetch_matches(tournament_id, player_id):
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Get tournament end_date
+    cur.execute("SELECT end_date FROM tournaments WHERE tournament_id=?", (tournament_id,))
+    row = cur.fetchone()
+    end_date = None
+    if row and row["end_date"]:
+        try:
+            end_date = datetime.fromisoformat(row["end_date"]).date()
+        except Exception:
+            pass
+
+    today = datetime.now(timezone.utc).date()
+
+    # If tournament ended → return cached matches
+    if end_date and today >= end_date:
+        cur.execute("SELECT data FROM matches WHERE tournament_id=? AND player_id=?", (tournament_id, player_id))
+        row = cur.fetchone()
+        conn.close()
+        if row:
+            return json.loads(row["data"])  # matches list
+        return []  # nothing cached
 
     conn.close()
-    return entries
+
+    # Otherwise scrape fresh
+    url = f"https://ti.tournamentsoftware.com/tournament/{tournament_id}/player/{player_id}"
+    headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
+    resp = requests.get(url, headers=headers, timeout=10)
+    resp.raise_for_status()
+    soup = BeautifulSoup(resp.text, "html.parser")
+
+    matches = []
+    for match_div in soup.select(".match-group__item .match"):
+        draw = match_div.select_one(".match__header-title .nav-link__value")
+        draw_name = draw.get_text(strip=True) if draw else ""
+        players = [a.get_text(strip=True) for a in match_div.select(".match__row-title-value-content a")]
+        statuses = [s.get_text(strip=True) for s in match_div.select(".match__status")]
+        scores = [[li.get_text(strip=True) for li in ul.select("li")] for ul in match_div.select(".match__result ul.points")]
+        date_time = match_div.select_one(".icon-clock + .nav-link__value")
+        court = match_div.select_one(".icon-marker + .nav-link__value")
+        h2h_link = match_div.select_one(".match__btn-h2h")
+        h2h_url = h2h_link["href"] if h2h_link else ""
+
+        matches.append({
+            "draw": draw_name,
+            "players": players,
+            "statuses": statuses,
+            "scores": scores,
+            "date_time": date_time.get_text(strip=True) if date_time else "",
+            "court": court.get_text(strip=True) if court else "",
+            "h2h_url": h2h_url
+        })
+
+    # Cache scraped matches
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "INSERT OR REPLACE INTO matches (tournament_id, player_id, data) VALUES (?, ?, ?)",
+        (tournament_id, player_id, json.dumps(matches))
+    )
+    conn.commit()
+    conn.close()
+
+    return matches
+
 
 
 def extract_entries(html):
@@ -1876,20 +1949,52 @@ def entries(tournament_id):
     player_id = row["player_id"] if row else None
     tournament_age_group = row["age_group"] if row else None
 
-    # Decide target week
+    def parse_week_label(s: str):
+        # Expecting "WW-YYYY"
+        try:
+            w, y = s.split("-")
+            return int(w), int(y)
+        except Exception:
+            return None, None
+
+    # Normalize rankings week labels to numeric components
+    rankings_df["week_label"] = rankings_df["week"].astype(str)
+    rankings_df[["week_num", "week_year"]] = rankings_df["week_label"].apply(
+        lambda s: pd.Series(parse_week_label(s))
+    )
+
+    # Guard against bad/missing labels
+    valid_weeks = rankings_df.dropna(subset=["week_num", "week_year"]).copy()
+    valid_weeks["week_num"] = valid_weeks["week_num"].astype(int)
+    valid_weeks["week_year"] = valid_weeks["week_year"].astype(int)
+
+    # Compute target_week correctly
     today = datetime.now(timezone.utc).date()
     if close_date:
-        close_date_obj = datetime.fromisoformat(close_date).date()
+        try:
+            close_date_obj = datetime.fromisoformat(close_date).date()
+        except ValueError:
+            # If close_date is like "19/12/2025", convert it
+            d, m, y = close_date.split("/")
+            close_date_obj = datetime(int(y), int(m), int(d), tzinfo=timezone.utc).date()
+
         if today < close_date_obj:
-            target_week = rankings_df["week"].max()
+            # Current (latest available) week in rankings_df
+            latest = valid_weeks.sort_values(["week_year", "week_num"], ascending=[True, True]).iloc[-1]
+            target_week = f"{latest['week_num']}-{latest['week_year']}"
         else:
+            # Use the close_date’s ISO week
             week_num = close_date_obj.isocalendar()[1]
             year = close_date_obj.isocalendar()[0]
             target_week = f"{week_num}-{year}"
     else:
-        target_week = rankings_df["week"].max()
+        latest = valid_weeks.sort_values(["week_year", "week_num"], ascending=[True, True]).iloc[-1]
+        target_week = f"{latest['week_num']}-{latest['week_year']}"
 
-    selected_rankings = rankings_df[rankings_df["week"] == target_week].copy()
+    selected_rankings = rankings_df[rankings_df["week_label"] == target_week].copy()
+
+    print(f"[INFO] Rankings imported from week {target_week}", flush=True)
+
 
     # Step 1: rankings for this tournament's age_group
     if tournament_age_group:
@@ -2024,47 +2129,111 @@ def entries(tournament_id):
 
 @app.route("/matches/<tournament_id>/<player_id>")
 def matches(tournament_id, player_id):
-    # initialize singles stats
-    singles_won, singles_lost = None, None
+    # --- Ensure matches table exists ---
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS matches (
+            tournament_id TEXT NOT NULL,
+            player_id TEXT NOT NULL,
+            data TEXT NOT NULL,
+            updated_at TEXT,
+            PRIMARY KEY (tournament_id, player_id)
+        )
+    """)
+    conn.commit()
 
-    url = f"https://ti.tournamentsoftware.com/tournament/{tournament_id}/player/{player_id}"
-    headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
-    resp = requests.get(url, headers=headers, timeout=10)
-    resp.raise_for_status()
+    # --- Add updated_at column if missing ---
+    try:
+        cur.execute("ALTER TABLE matches ADD COLUMN updated_at TEXT")
+        conn.commit()
+        print("[INFO] Added updated_at column to matches table")
+    except sqlite3.OperationalError:
+        # Column already exists
+        pass
 
-    soup = BeautifulSoup(resp.text, "html.parser")
+    # --- Get tournament info ---
+    cur.execute("SELECT end_date, tournament_name, draw_id, event_id FROM tournaments WHERE tournament_id=?", (tournament_id,))
+    row = cur.fetchone()
+    conn.close()
 
-    # --- Parse matches ---
-    matches = []
-    for match_div in soup.select(".match-group__item .match"):
-        draw = match_div.select_one(".match__header-title .nav-link__value")
-        draw_name = draw.get_text(strip=True) if draw else ""
+    end_date = None
+    if row and row["end_date"]:
+        try:
+            end_date = datetime.fromisoformat(row["end_date"]).date()
+        except Exception:
+            pass
 
-        players = [a.get_text(strip=True) for a in match_div.select(".match__row-title-value-content a")]
-        statuses = [s.get_text(strip=True) for s in match_div.select(".match__status")]
-        scores = []
-        for ul in match_div.select(".match__result ul.points"):
-            scores.append([li.get_text(strip=True) for li in ul.select("li")])
+    today = datetime.now(timezone.utc).date()
+    tournament_name = row["tournament_name"] if row else f"Tournament {tournament_id}"
+    draw_id = row["draw_id"] if row else None
+    event_id = row["event_id"] if row else None
 
-        date_time = match_div.select_one(".icon-clock + .nav-link__value")
-        court = match_div.select_one(".icon-marker + .nav-link__value")
+    # --- Check cache ---
+    conn = get_db_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT data, updated_at FROM matches WHERE tournament_id=? AND player_id=?", (tournament_id, player_id))
+    cached = cur.fetchone()
+    conn.close()
 
-        h2h_link = match_div.select_one(".match__btn-h2h")
-        h2h_url = h2h_link["href"] if h2h_link else ""
+    use_cache = False
+    if cached and cached["updated_at"]:
+        try:
+            cache_date = datetime.fromisoformat(cached["updated_at"]).date()
+            # ✅ Use cache only if it was updated on/after end_date
+            if end_date and cache_date >= end_date:
+                use_cache = True
+        except Exception:
+            pass
 
-        matches.append({
-            "draw": draw_name,
-            "players": players,
-            "statuses": statuses,
-            "scores": scores,
-            "date_time": date_time.get_text(strip=True) if date_time else "",
-            "court": court.get_text(strip=True) if court else "",
-            "h2h_url": h2h_url
-        })
+    if use_cache:
+        print(f"[INFO] Using cached matches for {tournament_id}/{player_id} (updated_at={cached['updated_at']})")
+        matches = json.loads(cached["data"])
+        soup = None
+    else:
+        print(f"[INFO] Cache missing/stale, scraping fresh matches for {tournament_id}/{player_id}")
+        url = f"https://ti.tournamentsoftware.com/tournament/{tournament_id}/player/{player_id}"
+        headers = {"User-Agent": "Mozilla/5.0", "Cookie": load_cookie()}
+        resp = requests.get(url, headers=headers, timeout=10)
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.text, "html.parser")
+
+        matches = []
+        for match_div in soup.select(".match-group__item .match"):
+            draw = match_div.select_one(".match__header-title .nav-link__value")
+            draw_name = draw.get_text(strip=True) if draw else ""
+            players = [a.get_text(strip=True) for a in match_div.select(".match__row-title-value-content a")]
+            statuses = [s.get_text(strip=True) for s in match_div.select(".match__status")]
+            scores = [[li.get_text(strip=True) for li in ul.select("li")] for ul in match_div.select(".match__result ul.points")]
+            date_time = match_div.select_one(".icon-clock + .nav-link__value")
+            court = match_div.select_one(".icon-marker + .nav-link__value")
+            h2h_link = match_div.select_one(".match__btn-h2h")
+            h2h_url = h2h_link["href"] if h2h_link else ""
+
+            matches.append({
+                "draw": draw_name,
+                "players": players,
+                "statuses": statuses,
+                "scores": scores,
+                "date_time": date_time.get_text(strip=True) if date_time else "",
+                "court": court.get_text(strip=True) if court else "",
+                "h2h_url": h2h_url
+            })
+
+        # --- Cache scraped matches with updated_at ---
+        print(f"[DEBUG] Caching {len(matches)} matches for tournament {tournament_id}, player {player_id}")
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute(
+            "INSERT OR REPLACE INTO matches (tournament_id, player_id, data, updated_at) VALUES (?, ?, ?, ?)",
+            (tournament_id, player_id, json.dumps(matches), datetime.now(timezone.utc).isoformat(timespec="seconds"))
+        )
+        conn.commit()
+        conn.close()
 
     # --- Parse statistics table (all columns) ---
     stats = []
-    stats_table = soup.select_one(".module.module--card .table--new")
+    stats_table = soup.select_one(".module.module--card .table--new") if soup else None
     if stats_table:
         for row in stats_table.select("tbody tr"):
             cells = []
@@ -2097,24 +2266,10 @@ def matches(tournament_id, player_id):
         conn.commit()
         conn.close()
 
-    # --- Get tournament_name, draw_id, event_id from DB ---
-    conn = get_db_connection()
-    cur = conn.cursor()
-    cur.execute(
-        "SELECT tournament_name, draw_id, event_id FROM tournaments WHERE tournament_id=?",
-        (tournament_id,)
-    )
-    row = cur.fetchone()
-    conn.close()
-
-    tournament_name = row["tournament_name"] if row else f"Tournament {tournament_id}"
-    draw_id = row["draw_id"] if row else None
-    event_id = row["event_id"] if row else None
-
-    # --- Build stat_summary: Singles, Doubles, Total ---
+    # --- Build stat_summary (unchanged) ---
     def extract_wl(cells):
         try:
-            wl_text = cells[2]["text"]  # e.g. "35-28 (55.6%)"
+            wl_text = cells[2]["text"]
             wl_part = wl_text.split()[0] if wl_text else ""
             if "-" in wl_part:
                 won, lost = map(int, wl_part.split("-"))
@@ -2133,7 +2288,6 @@ def matches(tournament_id, player_id):
         elif label == "doubles":
             doubles_won_summary, doubles_lost_summary = extract_wl(row)
 
-    # Compute totals
     total_won = singles_won_summary + doubles_won_summary
     total_lost = singles_won_summary + doubles_lost_summary
 
@@ -2141,27 +2295,18 @@ def matches(tournament_id, player_id):
         return round(part / total * 100, 1) if total > 0 else 0.0
 
     stat_summary = {
-        "singles": {
-            "won": singles_won_summary,
-            "lost": singles_lost_summary,
-            "won_pct": pct(singles_won_summary, singles_won_summary + singles_lost_summary),
-            "lost_pct": pct(singles_lost_summary, singles_won_summary + singles_lost_summary),
-            "total": singles_won_summary + singles_lost_summary
-        },
-        "doubles": {
-            "won": doubles_won_summary,
-            "lost": doubles_lost_summary,
-            "won_pct": pct(doubles_won_summary, doubles_won_summary + doubles_lost_summary),
-            "lost_pct": pct(doubles_lost_summary, doubles_won_summary + doubles_lost_summary),
-            "total": doubles_won_summary + doubles_lost_summary
-        },
-        "total": {
-            "won": total_won,
-            "lost": total_lost,
-            "won_pct": pct(total_won, total_won + total_lost),
-            "lost_pct": pct(total_lost, total_won + total_lost),
-            "total": total_won + total_lost
-        }
+        "singles": {"won": singles_won_summary, "lost": singles_lost_summary,
+                    "won_pct": pct(singles_won_summary, singles_won_summary + singles_lost_summary),
+                    "lost_pct": pct(singles_lost_summary, singles_won_summary + singles_lost_summary),
+                    "total": singles_won_summary + singles_lost_summary},
+        "doubles": {"won": doubles_won_summary, "lost": doubles_lost_summary,
+                    "won_pct": pct(doubles_won_summary, doubles_won_summary + doubles_lost_summary),
+                    "lost_pct": pct(doubles_lost_summary, doubles_won_summary + doubles_lost_summary),
+                    "total": doubles_won_summary + doubles_lost_summary},
+        "total": {"won": total_won, "lost": total_lost,
+                  "won_pct": pct(total_won, total_won + total_lost),
+                  "lost_pct": pct(total_lost, total_won + total_lost),
+                  "total": total_won + total_lost}
     }
 
     return render_template(
@@ -2177,6 +2322,8 @@ def matches(tournament_id, player_id):
         draw_id=draw_id,
         event_id=event_id
     )
+
+
 
 
 @app.route("/categories", methods=["GET","POST"])
@@ -2237,17 +2384,40 @@ def player():
     conn.close()
 
     # --- Build WTN timeline
+    def week_label_to_date(label: str) -> date: 
+        # label like "51-2025" 
+        w, y = label.split("-") 
+        return date.fromisocalendar(int(y), int(w), 1) # Monday of that ISO week
     wtn_weeks = []
     wtn_values = []
     for r in rows:
         if r["WTN"] is not None:
             wtn_weeks.append(r["Week"])
             wtn_values.append(float(r["WTN"]))
-    wtn_weeks = wtn_weeks[::4]
-    wtn_values = wtn_values[::4]
+
     if wtn_weeks and wtn_values:
-        sorted_pairs = sorted(zip(wtn_weeks, wtn_values), key=lambda x: parse_week(x[0]))
+        # Sort by week ascending
+        sorted_pairs = sorted(zip(wtn_weeks, wtn_values), key=lambda x: week_label_to_date(x[0]))
         wtn_weeks, wtn_values = zip(*sorted_pairs)
+
+        # Always include the latest, then step backwards every 4 weeks
+        latest_date = week_label_to_date(wtn_weeks[-1])
+        earliest_date = week_label_to_date(wtn_weeks[0])
+
+        sampled_weeks = []
+        sampled_values = []
+        target = latest_date
+
+        while target >= earliest_date:
+            # Find the last record <= target
+            for wk, val in reversed(sorted_pairs):
+                if week_label_to_date(wk) <= target:
+                    sampled_weeks.append(wk)
+                    sampled_values.append(val)
+                    break
+            target -= timedelta(weeks=4)
+
+        wtn_weeks, wtn_values = list(reversed(sampled_weeks)), list(reversed(sampled_values))
 
     wtn_plot_json = None
     if wtn_weeks and wtn_values:
