@@ -1,7 +1,6 @@
 import requests
 from bs4 import BeautifulSoup
 from datetime import datetime
-
 from ranking_fetcher import load_cookie
 
 BASE_TOURNAMENT_URL = "https://ti.tournamentsoftware.com/tournament"

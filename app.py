@@ -1,6 +1,5 @@
 import sqlite3
 from update_current_week import update_current_week as run_update
-from flask import Flask, render_template, request, redirect, url_for
 from flask_login import LoginManager, UserMixin, login_user, logout_user, login_required, current_user
 from pathlib import Path
 from datetime import datetime, date, timezone, timedelta
@@ -25,6 +24,7 @@ import json
 from collections import defaultdict
 from stringing import stringing_bp
 from config import DATABASE
+from io import StringIO
 
 
 COOKIE_FILE = Path(__file__).with_name("cookie.txt")
@@ -1219,7 +1219,7 @@ def fetch_matches(tournament_id, player_id):
 
 def extract_entries(html):
     soup = BeautifulSoup(html, "html.parser")
-    tables = pd.read_html(str(soup))
+    tables = pd.read_html(StringIO(str(soup)))
     if not tables:
         return []
 
@@ -1909,31 +1909,20 @@ def entries(tournament_id):
 
     # Convert list of dicts into DataFrame for downstream merging/sorting
     entries_df = pd.DataFrame(entries)
-    
-    # If you want to keep consistent column names for later logic
-    entries_df.rename(
-        columns={"draw": "Draw", "player": "Player", "seed": "Seed"},
-        inplace=True
-    )
-
-    # Fix column names: Unnamed:0 is actually the Draw column
+    entries_df.rename(columns={"draw": "Draw", "player": "Player", "seed": "Seed"}, inplace=True)
     entries_df.rename(columns={"Unnamed: 0": "Draw", "Player": "player"}, inplace=True)
 
     # Clean player names
     entries_df["player"] = entries_df["player"].astype(str).apply(clean_player_name)
-
-    # Normalize player names
     entries_df["player_norm"] = entries_df["player"].str.lower().str.strip()
 
     # Load rankings
     rankings_df = load_rankings().copy()
     rankings_df.columns = [c.strip().lower().replace(" ", "_") for c in rankings_df.columns]
     rankings_df["player_norm"] = rankings_df["player"].astype(str).apply(normalize_name)
-
-    # Convert rank to numeric helper
     rankings_df["rank_num"] = pd.to_numeric(rankings_df["rank"], errors="coerce")
 
-    # ✅ Fetch tournament_name, draw_id, player_id and age_group from tournaments table
+    # ✅ Tournament info
     conn = get_db_connection()
     cur = conn.cursor()
     cur.execute(
@@ -1950,7 +1939,6 @@ def entries(tournament_id):
     tournament_age_group = row["age_group"] if row else None
 
     def parse_week_label(s: str):
-        # Expecting "WW-YYYY"
         try:
             w, y = s.split("-")
             return int(w), int(y)
@@ -1959,9 +1947,7 @@ def entries(tournament_id):
 
     # Normalize rankings week labels to numeric components
     rankings_df["week_label"] = rankings_df["week"].astype(str)
-    rankings_df[["week_num", "week_year"]] = rankings_df["week_label"].apply(
-        lambda s: pd.Series(parse_week_label(s))
-    )
+    rankings_df[["week_num", "week_year"]] = rankings_df["week_label"].apply(parse_week_label).tolist()
 
     # Guard against bad/missing labels
     valid_weeks = rankings_df.dropna(subset=["week_num", "week_year"]).copy()
@@ -1974,27 +1960,22 @@ def entries(tournament_id):
         try:
             close_date_obj = datetime.fromisoformat(close_date).date()
         except ValueError:
-            # If close_date is like "19/12/2025", convert it
             d, m, y = close_date.split("/")
             close_date_obj = datetime(int(y), int(m), int(d), tzinfo=timezone.utc).date()
 
         if today < close_date_obj:
-            # Current (latest available) week in rankings_df
-            latest = valid_weeks.sort_values(["week_year", "week_num"], ascending=[True, True]).iloc[-1]
+            latest = valid_weeks.sort_values(["week_year", "week_num"]).iloc[-1]
             target_week = f"{latest['week_num']}-{latest['week_year']}"
         else:
-            # Use the close_date’s ISO week
             week_num = close_date_obj.isocalendar()[1]
             year = close_date_obj.isocalendar()[0]
             target_week = f"{week_num}-{year}"
     else:
-        latest = valid_weeks.sort_values(["week_year", "week_num"], ascending=[True, True]).iloc[-1]
+        latest = valid_weeks.sort_values(["week_year", "week_num"]).iloc[-1]
         target_week = f"{latest['week_num']}-{latest['week_year']}"
 
     selected_rankings = rankings_df[rankings_df["week_label"] == target_week].copy()
-
     print(f"[INFO] Rankings imported from week {target_week}", flush=True)
-
 
     # Step 1: rankings for this tournament's age_group
     if tournament_age_group:
@@ -2002,41 +1983,33 @@ def entries(tournament_id):
     else:
         age_group_rankings = pd.DataFrame()
 
-    # Step 2: best rank across all age groups (keep all columns!)
+    # Step 2: best rank across all age groups
     best_rankings_all = (
         selected_rankings.loc[selected_rankings.groupby("player_norm")["rank_num"].idxmin()]
         .reset_index(drop=True)
     )
 
-    # Merge entries with age_group rankings first
+    # Merge entries with rankings
     merged_df = entries_df.merge(age_group_rankings, on="player_norm", how="left", suffixes=("", "_age"))
-
-    # Merge with best across all age groups (keep all columns with suffix)
     merged_df = merged_df.merge(best_rankings_all, on="player_norm", how="left", suffixes=("", "_best"))
 
-    # Choose rank and metadata: prefer age_group, else best, else defaults
     def choose_value(row, col):
         if pd.notna(row.get(col)):
             return row[col]
         elif pd.notna(row.get(f"{col}_best")):
             return row[f"{col}_best"]
         else:
-            if col == "rank":
-                return 999
-            return "N/A"
+            return 999 if col == "rank" else "N/A"
 
     for col in ["rank", "agegroup", "wtn", "ranking_points", "total_points",
                 "tournaments", "avg_points", "province", "year_of_birth"]:
         merged_df[col] = merged_df.apply(lambda r: choose_value(r, col), axis=1)
 
-    # Ensure rank is numeric for sorting
     merged_df["rank"] = pd.to_numeric(merged_df["rank"], errors="coerce").fillna(999).astype(int)
 
-    # Clean Seed column: replace NaN with empty string
     if "Seed" in merged_df.columns:
         merged_df["Seed"] = merged_df["Seed"].fillna("").astype(str).replace("nan", "")
 
-    # Replace NaN in all other ranking columns with "N/A"
     ranking_cols = [
         "member_id", "year_of_birth", "wtn", "ranking_points", "total_points",
         "tournaments", "avg_points", "province", "agegroup", "week", "updatedat"
@@ -2045,7 +2018,7 @@ def entries(tournament_id):
         if col in merged_df.columns:
             merged_df[col] = merged_df[col].fillna("N/A")
 
-    # ✅ Define custom sort: Maindraw → tournament age group → rank asc; Then Qualification > Reserve > Exclude
+    # ✅ Custom sort
     merged_df["draw_lower"] = merged_df["Draw"].astype(str).str.lower()
     merged_df["draw_priority"] = np.select(
         [
@@ -2060,7 +2033,6 @@ def entries(tournament_id):
     merged_df["orig_idx"] = range(len(merged_df))
 
     def sort_entries(df, tournament_age_group):
-        # Maindraw: tournament age group first, then rank asc
         maindraw = df[df["draw_priority"] == 1].copy()
         maindraw["is_tournament_age"] = maindraw["agegroup"].eq(tournament_age_group)
         maindraw = maindraw.sort_values(
@@ -2068,51 +2040,26 @@ def entries(tournament_id):
             ascending=[False, True, True],
             kind="mergesort"
         )
-
-        # Qualification: sort by rank asc
-        qualification = df[df["draw_priority"] == 2].copy()
-        qualification = qualification.sort_values(
+        qualification = df[df["draw_priority"] == 2].copy().sort_values(
             by=["rank", "orig_idx"], ascending=[True, True], kind="mergesort"
         )
-
-        # Reserve: split into numbered vs plain
         reserve = df[df["draw_priority"] == 3].copy()
-
-        # Extract number at end of "reserve list X" if present
         def extract_reserve_number(draw_str):
             m = re.search(r"reserve\s*list\s*(\d+)$", str(draw_str).lower())
             return int(m.group(1)) if m else None
-
         reserve["reserve_num"] = reserve["Draw"].apply(extract_reserve_number)
-
-        # Numbered reserves first, sorted ascending by number
-        reserve_numbered = reserve[reserve["reserve_num"].notna()].copy()
-        reserve_numbered = reserve_numbered.sort_values(
+        reserve_numbered = reserve[reserve["reserve_num"].notna()].copy().sort_values(
             by=["reserve_num", "orig_idx"], ascending=[True, True], kind="mergesort"
         )
-
-        # Plain reserves (no number) after, sorted alphabetically by Draw
-        reserve_plain = reserve[reserve["reserve_num"].isna()].copy()
-        reserve_plain = reserve_plain.sort_values(
+        reserve_plain = reserve[reserve["reserve_num"].isna()].copy().sort_values(
             by=["Draw", "orig_idx"], ascending=[True, True], kind="mergesort"
         )
-
-        # Concatenate
         reserve = pd.concat([reserve_numbered, reserve_plain])
-
-        # Exclude: keep original order
-        exclude = df[df["draw_priority"] == 4].copy()
-        exclude = exclude.sort_values(by=["orig_idx"], kind="mergesort")
-
-        # Others: keep original order
-        others = df[df["draw_priority"] == 5].copy()
-        others = others.sort_values(by=["orig_idx"], kind="mergesort")
-
+        exclude = df[df["draw_priority"] == 4].copy().sort_values(by=["orig_idx"], kind="mergesort")
+        others = df[df["draw_priority"] == 5].copy().sort_values(by=["orig_idx"], kind="mergesort")
         return pd.concat([maindraw, qualification, reserve, exclude, others]).reset_index(drop=True)
 
-    # ✅ Apply custom sort
     merged_df = sort_entries(merged_df, tournament_age_group)
-
     entries = merged_df.to_dict(orient="records")
 
     return render_template(
@@ -2125,6 +2072,7 @@ def entries(tournament_id):
         player_id=player_id,
         tournament_age_group=tournament_age_group,
     )
+
 
 
 @app.route("/matches/<tournament_id>/<player_id>")
