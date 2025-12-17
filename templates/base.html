@@ -48,6 +48,9 @@
             <li class="nav-item">
               <a class="nav-link" href="{{ url_for('stringing.stringing') }}">Stringing</a>
             </li>
+            <li class="nav-item"> 
+              <a class="nav-link" href="{{ url_for('fitness.index') }}">Fitness</a> 
+            </li>
             <li class="nav-item">
               {% if current_user.is_authenticated %}
                 <div class="d-flex align-items-center">

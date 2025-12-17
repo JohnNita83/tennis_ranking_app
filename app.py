@@ -23,6 +23,7 @@ import plotly.utils
 import json
 from collections import defaultdict
 from stringing import stringing_bp
+from fitness import fitness_bp, ensure_fitness_tables
 from config import DATABASE
 from io import StringIO
 
@@ -173,6 +174,8 @@ app.config['DEBUG'] = True
 
 # Register Blueprints
 app.register_blueprint(stringing_bp)
+ensure_fitness_tables()
+app.register_blueprint(fitness_bp)
 
 
 # Ensure tables exist before routes use them
