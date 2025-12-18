@@ -804,23 +804,30 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         matches = won + lost
         week_label = get_week_range(start_date, end_date)
 
-        def format_date_short(date_str):
+        # helper returns weekday + date part separately
+        def format_date_parts(date_str):
             try:
                 d = datetime.fromisoformat(date_str).date()
-                # Format: Weekday abbreviation + DD.MM.YY
-                return d.strftime("%a %d.%m.%y")
+                weekday = d.strftime("%a")       # e.g. Sat
+                date_part = d.strftime("%d.%m.%y")  # e.g. 03.01.26
+                return weekday, date_part
             except Exception:
-                return date_str  # fallback if parsing fails
+                return None, None
+
+        # inside your loop
+        start_weekday, start_date_part = format_date_parts(start_date)
+        end_weekday, end_date_part = format_date_parts(end_date)
 
         row = {
             "id": row_id,
             "no": idx,
-            "week": get_week_range(start_date, end_date), 
-            "week": get_week_range(start_date, end_date), 
-            "start_date": start_date, 
-            "end_date": end_date, 
-            "start_date_display": format_date_short(start_date) if start_date else "", 
-            "end_date_display": format_date_short(end_date) if end_date else "",
+            "week": get_week_range(start_date, end_date),
+            "start_date": start_date,   # raw ISO string for <input type="date">
+            "end_date": end_date,
+            "start_weekday": start_weekday,
+            "start_date_part": start_date_part,
+            "end_weekday": end_weekday,
+            "end_date_part": end_date_part,
             "wk_label": wk_label,
             "tournament_name": r["tournament_name"],
             "cat_code": cat_code,
