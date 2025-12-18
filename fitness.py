@@ -35,10 +35,10 @@ CATEGORIES = {
     "AGILITY": [("Spider Drill", "time")],
     "EXPLOSIVENESS": [("Height", "distance"), ("Length", "distance")],
     "BALANCE": [("L BOSU", "time"), ("R BOSU", "time")],
-    "STRENGTH": [("Arm Hold", "time"), ("Legs Hold", "time"),
+    "STRENGTH": [("Arm Hold", "time"), ("Leg Hops", "repetitions"),
                  ("Plank", "time"), ("2kg Throw", "distance")],
     "SPEED": [("10m Sprint", "time"), ("20m Sprint", "time")],
-    "ENDUR": [("1200m Run", "time")]
+    "ENDUR": [("800m Run", "time")]
 }
 
 # --- Helper: parse time/distance/reps values ---
@@ -88,7 +88,6 @@ def index():
         "BALANCE__L BOSU",
         "BALANCE__R BOSU",
         "STRENGTH__Arm Hold",
-        "STRENGTH__Legs Hold",
         "STRENGTH__Plank",
     }
 
