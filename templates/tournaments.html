@@ -25,8 +25,8 @@
         position: sticky;
         left: 0;
       }
-      .table-tour td:nth-child(5),
-      .table-tour th:nth-child(5) {
+      .table-tour td:nth-child(6),
+      .table-tour th:nth-child(6) {
         position: sticky;
         left: 0;
         max-width: 200px;
@@ -246,6 +246,7 @@
             <tr>
               <th></th>
               <th>#</th>
+              <th>Week</th>
               <th>Start</th>
               <th>Finish</th>
               <th>Tournament</th>
@@ -291,11 +292,29 @@
                 </form>
               </td>
               <td style="font-size: .875rem; text-align: center;">{{ r.no }}</td>
+              <td class="fw-bold" style="font-size: .875rem; text-align: center;">{{ r.week }}</td>
               <td style="font-size: .875rem;">
-                <input type="date" name="start_{{ r.id }}" value="{{ r.start_date or '' }}" style="width:auto; max-width:100px;">
+                <span class="date-display" onclick="toggleEdit(this)">
+                  {{ r.start_date_display or 'Start Date' }}
+                </span>
+                <input type="date" 
+                      class="date-edit d-none" 
+                      name="start_{{ r.id }}" 
+                      value="{{ r.start_date or '' }}" 
+                      style="width:auto; max-width:120px;"
+                      onblur="toggleEdit(this)">
               </td>
+
               <td style="font-size: .875rem;">
-                <input type="date" name="finish_{{ r.id }}" value="{{ r.end_date or '' }}" style="width:auto; max-width:100px;">
+                <span class="date-display" onclick="toggleEdit(this)">
+                  {{ r.end_date_display or 'End Date' }}
+                </span>
+                <input type="date" 
+                      class="date-edit d-none" 
+                      name="finish_{{ r.id }}" 
+                      value="{{ r.end_date or '' }}" 
+                      style="width:auto; max-width:120px;"
+                      onblur="toggleEdit(this)">
               </td>
 
               <td>
@@ -478,6 +497,32 @@
     dragContainer.scrollLeft = scrollLeft - walk;
   });
 </script>
+
+<script>
+function toggleEdit(el) {
+  const cell = el.closest('td');
+  const display = cell.querySelector('.date-display');
+  const input = cell.querySelector('.date-edit');
+
+  if (el.classList.contains('date-display')) {
+    // Switch to input
+    display.classList.add('d-none');
+    input.classList.remove('d-none');
+    input.focus();
+  } else {
+    // Switch back to display
+    display.classList.remove('d-none');
+    input.classList.add('d-none');
+    // Update display text to new formatted value
+    if (input.value) {
+      const d = new Date(input.value);
+      const options = { weekday: 'short', day: '2-digit', month: '2-digit', year: '2-digit' };
+      display.textContent = d.toLocaleDateString('en-GB', options).replace(/\//g, '.');
+    }
+  }
+}
+</script>
+
 
 </body>
 {% endblock %}

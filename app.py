@@ -643,6 +643,22 @@ def fetch_event_wl_stats(tournament_id: str, player_id: str) -> dict:
 
     return result
 
+def get_week_range(start_date_str, end_date_str):
+    try:
+        start = datetime.fromisoformat(start_date_str).date() if start_date_str else None
+        end = datetime.fromisoformat(end_date_str).date() if end_date_str else None
+    except Exception:
+        return None
+
+    if not start:
+        return None
+
+    start_week = start.isocalendar()[1]
+    if end:
+        end_week = end.isocalendar()[1]
+        if end_week != start_week:
+            return f"{start_week}/{end_week}"
+    return str(start_week)
 
 
 def build_tournament_view(player_name: str, age_group: str) -> dict:
@@ -786,12 +802,25 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         prev_rank = rank_value if rank_value is not None else prev_rank
 
         matches = won + lost
+        week_label = get_week_range(start_date, end_date)
+
+        def format_date_short(date_str):
+            try:
+                d = datetime.fromisoformat(date_str).date()
+                # Format: Weekday abbreviation + DD.MM.YY
+                return d.strftime("%a %d.%m.%y")
+            except Exception:
+                return date_str  # fallback if parsing fails
 
         row = {
             "id": row_id,
             "no": idx,
-            "start_date": start_date,
-            "end_date": end_date,
+            "week": get_week_range(start_date, end_date), 
+            "week": get_week_range(start_date, end_date), 
+            "start_date": start_date, 
+            "end_date": end_date, 
+            "start_date_display": format_date_short(start_date) if start_date else "", 
+            "end_date_display": format_date_short(end_date) if end_date else "",
             "wk_label": wk_label,
             "tournament_name": r["tournament_name"],
             "cat_code": cat_code,
