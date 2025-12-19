@@ -235,14 +235,15 @@
 
   <div class="card shadow-sm">
     <div class="card-body">
-      <div class="d-flex justify-content-between align-items-center mb-2">
+      <div class="d-flex justify-content-between align-items-center mb-3">
         <h6 class="card-title mb-0">Tournament List</h6>
         <button type="submit" class="btn btn-sm btn-success">
           Save changes
         </button>
       </div>
 
-      <h3>{{ player_name }} – {{ age_group }}</h3>
+      <div class="d-flex justify-content-between align-items-center mb-2">
+      <h4>{{ player_name }} <br> {{ age_group }}</h4>
 
       <div class="d-flex gap-3 mb-3">
 
@@ -271,6 +272,7 @@
           </select>
         </div>
 
+      </div>
       </div>
       
       <div class="table-tour table-responsive table-drag-container" style="overflow-x: auto; white-space: nowrap;">
@@ -447,7 +449,7 @@
               </td>
               <td style="font-size: .875rem; text-align: center;"
                 {% if r.diff is not none %}
-                  {% if r.diff > 0 %}class="text-success"{% elif r.diff < 0 %}class="text-danger"{% else %}class="text-warning"{% endif %}
+                  {% if r.diff > 0 %}class="text-success"{% elif r.diff < 0 %}class="text-danger"{% endif %}
                 {% endif %}
               >
                 {% if r.diff is not none %}
