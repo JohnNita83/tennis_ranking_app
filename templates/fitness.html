@@ -63,7 +63,7 @@
     <table class="table table-sm table-striped align-middle fitness-table">
       <!-- Column widths -->
       <colgroup>
-        <col style="width: 150px;"> <!-- Date -->
+        <col style="width: 120px;"> <!-- Date -->
         {% for subs in categories.values() %}
           {% for sub, _ in subs %}
             <col style="width: 100px;"> <!-- Subcategory columns -->
@@ -98,7 +98,7 @@
         <!-- Add row -->
         <tr class="table-success">
           <td class="subcell">
-            <input type="date" name="date" value="{{ now.strftime('%Y-%m-%d') }}" required>
+            <input type="date" name="date" style="width:110px" value="{{ now.strftime('%Y-%m-%d') }}" required>
           </td>
           {% for cat, subs in categories.items() %}
             {% for sub, entry_type in subs %}
@@ -115,20 +115,43 @@
         <!-- Existing entries -->
         {% for row in rows %}
         <tr class="body-table">
+
+          <!-- Date column -->
           <td class="subcell">{{ row.date }}</td>
+
+          <!-- Fitness values -->
           {% for cat, subs in categories.items() %}
             {% for sub, entry_type in subs %}
-              {% set key = cat + '__' + sub %}
+              {% set key = cat ~ '__' ~ sub %}
               {% set val = row.get(key) %}
               {% set is_best = best_values.get(key) == val %}
-              <td class="subcell {{ 'text-success fw-bold' if is_best }}">{{ val }}</td>
+
+              <td class="subcell {{ 'text-success fw-bold' if is_best }}">
+
+                <!-- Display mode -->
+                <span class="fit-display" onclick="fitToggleEdit(this)">
+                  {{ val if val else '—' }}
+                </span>
+
+                <!-- Edit mode -->
+                <input type="text"
+                      class="fit-edit d-none"
+                      value="{{ val or '' }}"
+                      data-date="{{ row.raw_date }}"
+                      data-category="{{ cat }}"
+                      data-subcategory="{{ sub }}"
+                      onblur="fitSave(this)">
+              </td>
             {% endfor %}
           {% endfor %}
+
+          <!-- Delete button -->
           <td class="subcell">
-            <a href="{{ url_for('fitness.delete_entry', date=row.date) }}"
-                class="btn btn-danger btn-sm"
-                onclick="return confirm('Are you sure you want to delete this entry?');">−</a>
-            </td>
+            <a href="{{ url_for('fitness.delete_entry', date=row.raw_date) }}"
+              class="btn btn-danger btn-sm"
+              onclick="return confirm('Are you sure you want to delete this entry?');">−</a>
+          </td>
+
         </tr>
         {% endfor %}
       </tbody>
@@ -218,10 +241,10 @@
         <div class="card-body">
           <ul class="list-group list-group-flush">
             <li class="list-group-item">
-              <strong>Left foot BOSU:</strong> Measure the time of balance on one leg. <em>(Best of 2)</em>
+              <strong>Left foot BOSU:</strong> Measure the time of balance on one leg. <em>(1 Time)</em>
             </li>
             <li class="list-group-item">
-              <strong>Right foot BOSU:</strong> Measure the time of balance on one leg. <em>(Best of 2)</em>
+              <strong>Right foot BOSU:</strong> Measure the time of balance on one leg. <em>(1 Time)</em>
             </li>
           </ul>
         </div>
@@ -235,13 +258,13 @@
         <div class="card-body">
           <ul class="list-group list-group-flush">
             <li class="list-group-item">
-              <strong>Arm hold:</strong> Hold a 1kg medicine ball with both arms fully extended in front. Measure the time held horizontally. <em>(Best of 1 or 2)</em>
+              <strong>Arm hold:</strong> Hold a 1kg medicine ball with both arms fully extended in front. Measure the time held horizontally. <em>(1 Time)</em>
             </li>
             <li class="list-group-item">
-              <strong>Lateral jumps:</strong> With both feet, jump over a hurdle left to right. Count how many in 30 sec. <em>(Best of 1 or 2)</em>
+              <strong>Lateral jumps:</strong> With both feet, jump over a hurdle left to right. Count how many in 30 sec. <em>(1 Time)</em>
             </li>
             <li class="list-group-item">
-              <strong>Plank:</strong> Hold plank position and record the time held in good posture. <em>(Best of 1)</em>
+              <strong>Plank:</strong> Hold plank position and record the time held in good posture. <em>(1 Time)</em>
             </li>
             <li class="list-group-item">
               <strong>2kg medicine ball overhead throw:</strong> Measure the distance. <em>(Best of 3)</em>
@@ -258,10 +281,10 @@
         <div class="card-body">
           <ul class="list-group list-group-flush">
             <li class="list-group-item">
-              <strong>10m sprint:</strong> Measure time. <em>(Best of 1 or 2)</em>
+              <strong>10m sprint:</strong> Measure time. <em>(Best of 2)</em>
             </li>
             <li class="list-group-item">
-              <strong>20m sprint:</strong> Measure time. <em>(Best of 1 or 2)</em>
+              <strong>20m sprint:</strong> Measure time. <em>(Best of 2)</em>
             </li>
           </ul>
         </div>
@@ -274,7 +297,7 @@
         </div>
         <div class="card-body">
           <p class="mb-2">
-            <strong>800m (2 laps):</strong> Measure the full time to complete. <em>(Best of 1)</em>
+            <strong>800m (2 laps):</strong> Measure the full time to complete. <em>(1 Time)</em>
           </p>
         </div>
       </section>
@@ -318,4 +341,44 @@
     dragContainer.scrollLeft = scrollLeft - walk;
   });
 </script>
+
+<script>
+function fitToggleEdit(el) {
+    const cell = el.closest('td');
+    const display = cell.querySelector('.fit-display');
+    const input = cell.querySelector('.fit-edit');
+
+    display.classList.add('d-none');
+    input.classList.remove('d-none');
+    input.focus();
+}
+
+function fitSave(input) {
+    const cell = input.closest('td');
+    const display = cell.querySelector('.fit-display');
+
+    const value = input.value;
+    const date = input.dataset.date;
+    const category = input.dataset.category;
+    const subcategory = input.dataset.subcategory;
+
+    // Update display immediately
+    display.textContent = value || '—';
+    display.classList.remove('d-none');
+    input.classList.add('d-none');
+
+    // Send update to server
+    fetch("/fitness/update", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+            date: date,
+            category: category,
+            subcategory: subcategory,
+            value: value
+        })
+    });
+}
+</script>
+
 {% endblock %}

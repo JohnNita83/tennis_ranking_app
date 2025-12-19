@@ -45,6 +45,10 @@
         z-index: 5;
       }
     }
+    .table-success-dark,
+    .table-success-dark > td {
+        background-color: #cad1f7 !important;
+    }
   </style>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
 </head>
@@ -239,6 +243,35 @@
       </div>
 
       <h3>{{ player_name }} – {{ age_group }}</h3>
+
+      <div class="d-flex gap-3 mb-3">
+
+        <!-- Category Filter -->
+        <div>
+          <label class="form-label mb-0">Category</label>
+          <select id="filter-category" class="form-select form-select-sm" style="width:140px;">
+            <option value="">All</option>
+            {% for col_code, display_name in point_columns %}
+              <option value="{{ col_code }}">{{ display_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Status Filter -->
+        <div>
+          <label class="form-label mb-0">Status</label>
+          <select id="filter-status" class="form-select form-select-sm" style="width:140px;">
+            <option value="">All</option>
+            <option value="Interest">Interest</option>
+            <option value="Entered">Entered</option>
+            <option value="Played">Played</option>
+            <option value="W/D">W/D</option>
+            <option value="Rank ↓">Rank ↓</option>
+            <option value="Rank ↑">Rank ↑</option>
+          </select>
+        </div>
+
+      </div>
       
       <div class="table-tour table-responsive table-drag-container" style="overflow-x: auto; white-space: nowrap;">
         <table class="table table-sm table-striped align-middle">
@@ -253,6 +286,7 @@
               <th>Category</th>
               <th>Opens</th>
               <th>Close</th>
+              <th>Status</th>
               <th>Place</th>
               <th>Points</th>
               <th>Rnk points</th>
@@ -273,7 +307,21 @@
           <tbody>
             {% for r in rows %}
             {% set min_rank = rows | map(attribute='rank') | reject('equalto', None) | min %}
-            <tr class="{% if r.is_international %}table-warning{% endif %}">
+            {% set status = r.status %} 
+            {% set row_class = "" %} 
+            
+            {% if status == "Entered" %} 
+              {% set row_class = "table-warning" %} 
+            {% elif status == "Played" and not r.is_international %} 
+              {% set row_class = "table-success" %} 
+            {% elif status == "Played" and r.is_international %} 
+              {% set row_class = "table-success-dark" %} 
+            {% elif status in ["W/D", "Rank ↓", "Rank ↑"] %} 
+              {% set row_class = "table-danger" %} 
+            {% endif %}
+            <tr class="{{ row_class }}"
+                data-category="{{ r.cat_code }}"
+                data-status="{{ r.status }}">
               <td>
                 <form
                   method="post"
@@ -365,6 +413,16 @@
               </td>
 
               <td style="font-size: .875rem;">
+                <select name="status_{{ r.id }}" class="form-select form-select-sm" style="width:93px;">
+                  {% for opt in ["Interest", "Entered", "Played", "W/D", "Rank ↓", "Rank ↑"] %}
+                    <option value="{{ opt }}" {% if r.status == opt %}selected{% endif %}>
+                      {{ opt }}
+                    </option>
+                  {% endfor %}
+                </select>
+              </td>
+
+              <td style="font-size: .875rem;">
                 <input
                   type="number"
                   class="form-control form-control-sm"
@@ -426,7 +484,6 @@
               <td style="font-size: .875rem; text-align: center;"
                 {% if r.won > r.lost %}class="text-success"
                 {% elif r.won < r.lost %}class="text-danger"
-                {% else %}class="text-warning"
                 {% endif %}
               >
                 {{ r.matches }}
@@ -472,6 +529,11 @@
           </tbody>
 
         </table>
+      </div>
+      <div class="d-flex justify-content-end mt-4"> 
+        <button type="submit" class="btn btn-sm btn-success"> 
+          Save changes 
+        </button> 
       </div>
     </div>
   </div>
@@ -531,6 +593,25 @@ function toggleEdit(el) {
 }
 </script>
 
+<script>
+function applyFilters() {
+    const catFilter = document.getElementById("filter-category").value;
+    const statusFilter = document.getElementById("filter-status").value;
+
+    document.querySelectorAll("tbody tr").forEach(row => {
+        const rowCat = row.dataset.category;
+        const rowStatus = row.dataset.status;
+
+        const catMatch = !catFilter || rowCat === catFilter;
+        const statusMatch = !statusFilter || rowStatus === statusFilter;
+
+        row.style.display = (catMatch && statusMatch) ? "" : "none";
+    });
+}
+
+document.getElementById("filter-category").addEventListener("change", applyFilters);
+document.getElementById("filter-status").addEventListener("change", applyFilters);
+</script>
 
 </body>
 {% endblock %}

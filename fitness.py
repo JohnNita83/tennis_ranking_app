@@ -30,15 +30,15 @@ def ensure_fitness_tables():
 
 # --- Categories and subcategories definition ---
 CATEGORIES = {
-    "REACTION": [("React ball", "repetitions")],
-    "COORDINATION": [("FH", "repetitions"), ("BH", "repetitions")],
-    "AGILITY": [("Spider Drill", "time")],
-    "EXPLOSIVENESS": [("Height", "distance"), ("Length", "distance")],
-    "BALANCE": [("L BOSU", "time"), ("R BOSU", "time")],
-    "STRENGTH": [("Arm Hold", "time"), ("Leg Hops", "repetitions"),
-                 ("Plank", "time"), ("2kg Throw", "distance")],
-    "SPEED": [("10m Sprint", "time"), ("20m Sprint", "time")],
-    "ENDUR": [("800m Run", "time")]
+    "REACTION": [("React lights", "Reps (3)")],
+    "COORDINATION": [("FH", "Reps (3)"), ("BH", "Reps (3)")],
+    "AGILITY": [("Spider Drill", "Time (2)")],
+    "EXPLOSIVENESS": [("Height", "Dist (3)"), ("Length", "Dist (3)")],
+    "BALANCE": [("L BOSU", "Time (1)"), ("R BOSU", "Time (1)")],
+    "STRENGTH": [("Arm Hold", "Time (1)"), ("Leg Hops", "Reps (1)"),
+                 ("Plank", "Time (1)"), ("2kg Throw", "Dist (3)")],
+    "SPEED": [("10m Sprint", "Time (2)"), ("20m Sprint", "Time (2)")],
+    "ENDUR": [("800m Run", "Time (1)")]
 }
 
 # --- Helper: parse time/distance/reps values ---
@@ -74,11 +74,22 @@ def index():
     # Pivot rows into {date: {cat__sub: value}}
     grouped = {}
     for r in rows:
-        d = r["date"].split(" ")[0]  # keep only YYYY-MM-DD
+        raw_date = r["date"].split(" ")[0]  # keep only YYYY-MM-DD
+
+        # Convert to pretty format
+        dt = datetime.strptime(raw_date, "%Y-%m-%d")
+        pretty_date = dt.strftime("%d/%m/%Y")
+
         key = f"{r['category']}__{r['subcategory']}"
-        if d not in grouped:
-            grouped[d] = {"date": d, "id": r["id"]}
-        grouped[d][key] = r["value"]
+
+        if raw_date not in grouped:
+            grouped[raw_date] = {
+                "date": pretty_date,   # formatted for display
+                "raw_date": raw_date,  # keep original for editing/deleting
+                "id": r["id"]
+            }
+
+        grouped[raw_date][key] = r["value"]
 
     # Convert to list sorted by date descending
     pivoted_rows = sorted(grouped.values(), key=lambda x: x["date"], reverse=True)
@@ -132,6 +143,36 @@ def add_entry():
     conn.commit()
     conn.close()
     return redirect(url_for("fitness.index"))
+
+
+@fitness_bp.route("/update", methods=["POST"])
+def update_entry():
+    date = request.form["date"]
+    category = request.form["category"]
+    subcategory = request.form["subcategory"]
+    value = request.form["value"]
+
+    conn = get_db_connection()
+    cur = conn.cursor()
+
+    # Delete existing entry for that category/subcategory/date
+    cur.execute("""
+        DELETE FROM fitness_entries
+        WHERE date LIKE ? AND category = ? AND subcategory = ?
+    """, (f"{date}%", category, subcategory))
+
+    # Insert new value
+    if value.strip():
+        cur.execute("""
+            INSERT INTO fitness_entries (date, category, subcategory, entry_type, value)
+            VALUES (?, ?, ?, ?, ?)
+        """, (date, category, subcategory, "time", value))  # entry_type preserved if needed
+
+    conn.commit()
+    conn.close()
+
+    return "OK"
+
 
 
 @fitness_bp.route("/delete/<date>")

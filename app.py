@@ -427,6 +427,12 @@ def ensure_tournaments_table():
     except sqlite3.OperationalError:
         # Column already exists
         pass
+    # Add status column if missing
+    try:
+        cur.execute("ALTER TABLE tournaments ADD COLUMN status TEXT")
+    except sqlite3.OperationalError:
+        # Column already exists
+        pass
 
         conn.commit()
         conn.close()
@@ -765,7 +771,9 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         total_lost += lost
 
 
-        if cat_code in cat_counts:
+        # Count only tournaments with status == "Played"
+        status = r["status"] or "Interest"
+        if status == "Played" and cat_code in cat_counts:
             cat_counts[cat_code] += 1
 
         # points by place/category
@@ -833,6 +841,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
             "cat_code": cat_code,
             "opens_date": r["opens_date"],
             "close_date": r["close_date"],
+            "status": r["status"] or "Interest",
             "place": place,
             "points": pts,
             "ranking_points": None,  # set below
@@ -915,18 +924,26 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
         cat = rr["cat_code"]
         if not cat:
             continue
+
+        status = rr.get("status") or "Interest"
+
+        # Only count Played tournaments
+        if status != "Played":
+            continue
+
         summary = category_summary[cat]
         summary["tournaments"] += 1
         summary["total_points"] += rr["points"] if rr["points"] else 0
+
         place_val = rr["place"]
-        if place_val is not None and place_val > 0:  # skip zeros
+        if place_val is not None and place_val > 0:
             if summary["best_place"] is None or place_val < summary["best_place"]:
                 summary["best_place"] = place_val
+
         summary["won"] += rr["won"]
         summary["lost"] += rr["lost"]
         summary["total"] += rr["matches"]
 
-        # ✅ track max points for this category
         if rr["points"] and rr["points"] > summary["max_points"]:
             summary["max_points"] = rr["points"]
 
@@ -1645,6 +1662,16 @@ def points():
 def tournaments():
     ensure_tournaments_table()
 
+    # Define options for Status dropdown
+    STATUS_OPTIONS = [
+        "Interest",
+        "Entered",
+        "Played",
+        "W/D",
+        "Rank ↓",
+        "Rank ↑",
+    ]
+
     # Player name & age_group selection
     player_name = request.args.get("player", "").strip()
     if request.method == "POST":
@@ -1695,6 +1722,9 @@ def tournaments():
             elif key.startswith("close_"):  # Close date
                 row_id = key.split("_")[1]
                 cur.execute("UPDATE tournaments SET close_date=? WHERE id=?", (value or None, row_id))
+            elif key.startswith("status_"):
+                row_id = key.split("_")[1]
+                cur.execute("UPDATE tournaments SET status=? WHERE id=?", (value or None, row_id))
             elif key.startswith("event_"):
                 row_id = key.split("_")[1]
                 cur.execute("UPDATE tournaments SET event_id = ? WHERE id = ?", (value if value != "" else None, row_id))
