@@ -241,7 +241,7 @@
             <td><input type="date" name="date" class="form-control" style="width:auto; max-width:100px; font-size:.875rem;" required></td>
             <td>
               <select name="mains" class="form-select string-select" data-target="mains">
-                <option value="">—</option>
+                <option value="">Select String</option>
                 {% for s in strings %}
                   <option value="{{ s }}">{{ s }}</option>
                 {% endfor %}
@@ -252,7 +252,7 @@
             <td><input type="number" step="0.1" name="m_tension" class="form-control"></td>
             <td>
               <select name="crosses" class="form-select string-select" data-target="crosses">
-                <option value="">—</option>
+                <option value="">Select String</option>
                 {% for s in strings %}
                   <option value="{{ s }}">{{ s }}</option>
                 {% endfor %}
