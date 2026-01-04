@@ -2165,6 +2165,7 @@ def entries(tournament_id):
 
 @app.route("/matches/<tournament_id>/<player_id>")
 def matches(tournament_id, player_id):
+    refresh = request.args.get("refresh") == "1"
     # --- Ensure matches table exists ---
     conn = get_db_connection()
     cur = conn.cursor()
@@ -2213,10 +2214,10 @@ def matches(tournament_id, player_id):
     conn.close()
 
     use_cache = False
-    if cached and cached["updated_at"]:
+
+    if not refresh and cached and cached["updated_at"]:
         try:
             cache_date = datetime.fromisoformat(cached["updated_at"]).date()
-            # ✅ Use cache only if it was updated on/after end_date
             if end_date and cache_date >= end_date:
                 use_cache = True
         except Exception:

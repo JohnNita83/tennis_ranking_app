@@ -17,6 +17,13 @@
 </a> 
 {% endif %}
 
+<a href="{{ url_for('matches', tournament_id=tournament_id, player_id=player_id, refresh=1) }}"
+   class="btn btn-warning btn-md"
+   style="margin-left: 8px;">
+   REFRESH
+</a>
+
+
 <!-- Matches Table -->
 <div class="table-responsive pt-3">
   <table class="table table-sm table-striped">
