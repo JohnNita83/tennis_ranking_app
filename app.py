@@ -269,7 +269,14 @@ def bootstrap_db():
 
         _bootstrapped = True
 
-        
+def datetimeformat(value):
+    try:
+        return datetime.strptime(value, "%Y-%m-%d").strftime("%d.%m.%y")
+    except:
+        return value
+
+app.jinja_env.filters["datetimeformat"] = datetimeformat
+     
 
 def reset_categories_table():
     conn = get_db_connection()
@@ -868,18 +875,25 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
 
         # per-row ranking_points: top-6 within 365 days from this row's end_date
         current_end = parse_date_safe(end_date)
-        if current_end:
-            valid_points = []
-            for prev in rows:  # includes current + all previous
-                prev_end = parse_date_safe(prev["end_date"])
-                if prev_end and 0 <= (current_end - prev_end).days <= 365:
-                    p = prev["points"]
-                    if p is not None and p > 0:
-                        valid_points.append(p)
-            top6 = sorted(valid_points, reverse=True)[:6]
-            row["ranking_points"] = sum(top6) if top6 else 0
+        current_status = row.get("status") or "Interest"
+
+        # Only rows with status == "Played" should have ranking_points
+        if current_status != "Played":
+            row["ranking_points"] = None  # or 0 if you prefer
         else:
-            row["ranking_points"] = None
+            if current_end:
+                valid_points = []
+                for prev in rows:  # includes current + all previous
+                    prev_end = parse_date_safe(prev["end_date"])
+                    if prev_end and 0 <= (current_end - prev_end).days <= 365:
+                        status_prev = prev.get("status") or "Interest"
+                        p = prev["points"]
+                        if status_prev == "Played" and p is not None and p > 0:
+                            valid_points.append(p)
+                top6 = sorted(valid_points, reverse=True)[:6]
+                row["ranking_points"] = sum(top6) if top6 else 0
+            else:
+                row["ranking_points"] = None
 
     # max ranking points achieved across all rows
     if rows:
@@ -900,6 +914,11 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
             for i, rr in enumerate(rows):
                 end = parse_date_safe(rr["end_date"])
                 if end and cutoff <= end <= last_end:
+                    status_rr = rr.get("status") or "Interest"
+                    p = rr["points"]
+
+                    if status_rr == "Played" and p is not None and p > 0:
+                        candidates.append((i, p))
                     p = rr["points"]
                     if p is not None and p > 0:
                         candidates.append((i, p))

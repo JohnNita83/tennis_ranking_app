@@ -27,6 +27,11 @@ def ensure_stringing_tables():
             serial TEXT,
             FOREIGN KEY (player_id) REFERENCES players(id) ON DELETE CASCADE
         );
+          
+        CREATE TABLE IF NOT EXISTS strings (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT UNIQUE NOT NULL
+        );
 
         CREATE TABLE IF NOT EXISTS stringing_records (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,10 +66,12 @@ def stringing():
 
     conn = get_db_connection()
     players = conn.execute("SELECT * FROM players ORDER BY name ASC").fetchall()
+    strings = conn.execute("SELECT name FROM strings ORDER BY name ASC").fetchall()
 
     selected_player = None
     rackets = []
     selected_racket = None
+    
 
     # ✅ Default to Kevin Nita if no player_id is provided
     if player_id is None:
@@ -110,8 +117,24 @@ def stringing():
         rackets=rackets,
         selected_racket=selected_racket,
         selected_racket_id=racket_id,
+        strings=[s["name"] for s in strings],
     )
 
+@stringing_bp.route("/add_string_name", methods=["POST"])
+def add_string_name():
+    data = request.get_json()
+    name = data.get("name", "").strip()
+
+    if name:
+        conn = get_db_connection()
+        try:
+            conn.execute("INSERT INTO strings (name) VALUES (?)", (name,))
+            conn.commit()
+        except sqlite3.IntegrityError:
+            pass  # already exists
+        conn.close()
+
+    return ("", 204)
 
 
 @stringing_bp.route("/add_player", methods=["POST"])

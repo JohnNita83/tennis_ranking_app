@@ -239,10 +239,26 @@
             <input type="hidden" name="racket_id" value="{{ selected_racket_id }}">
             <td></td>
             <td><input type="date" name="date" class="form-control" style="width:auto; max-width:100px; font-size:.875rem;" required></td>
-            <td><input type="text" name="mains" class="form-control"></td>
+            <td>
+              <select name="mains" class="form-select string-select" data-target="mains">
+                <option value="">—</option>
+                {% for s in strings %}
+                  <option value="{{ s }}">{{ s }}</option>
+                {% endfor %}
+                <option value="__new__">➕ Add new string…</option>
+              </select>
+            </td>
             <td><input type="text" name="m_gauge" class="form-control"></td>
             <td><input type="number" step="0.1" name="m_tension" class="form-control"></td>
-            <td><input type="text" name="crosses" class="form-control"></td>
+            <td>
+              <select name="crosses" class="form-select string-select" data-target="crosses">
+                <option value="">—</option>
+                {% for s in strings %}
+                  <option value="{{ s }}">{{ s }}</option>
+                {% endfor %}
+                <option value="__new__">➕ Add new string…</option>
+              </select>
+            </td>
             <td><input type="text" name="c_gauge" class="form-control"></td>
             <td><input type="number" step="0.1" name="c_tension" class="form-control"></td>
             <td><button class="btn btn-success btn-sm">+</button></td>
@@ -264,7 +280,7 @@
             </form>
           </td>
           <td style="font-size:.875rem; width:50px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
-            {{ rec.date }}
+            {{ rec.date | datetimeformat }}
           </td>
           <td style="font-size:.875rem;">{{ rec.mains }}</td>
           <td tyle="font-size:.875rem;">{{ rec.m_gauge }}</td>
@@ -287,4 +303,25 @@
     {% endif %}
   {% endif %}
 </div>
+
+<script>
+document.querySelectorAll(".string-select").forEach(sel => {
+    sel.addEventListener("change", function () {
+        if (this.value === "__new__") {
+            const newString = prompt("Enter new string name:");
+            if (newString && newString.trim() !== "") {
+                fetch("/add_string_name", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ name: newString })
+                })
+                .then(() => location.reload());
+            } else {
+                this.value = "";
+            }
+        }
+    });
+});
+</script>
+
 {% endblock %}

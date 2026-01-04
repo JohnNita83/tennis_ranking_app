@@ -441,7 +441,7 @@
 
               <!-- Ranking points column (no highlight) -->
               <td class="{% if r.is_best_ranking_points %}fw-bold text-success{% endif %}" style="font-size: .875rem; text-align: center;">
-                {{ r.ranking_points }}
+                {{ "" if r.ranking_points is none else r.ranking_points }}
               </td>
 
               <td class="{% if r.rank == min_rank %}fw-bold text-success{% endif %}" style="font-size: .875rem; text-align: center;">
