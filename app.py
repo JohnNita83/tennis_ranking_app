@@ -919,9 +919,7 @@ def build_tournament_view(player_name: str, age_group: str) -> dict:
 
                     if status_rr == "Played" and p is not None and p > 0:
                         candidates.append((i, p))
-                    p = rr["points"]
-                    if p is not None and p > 0:
-                        candidates.append((i, p))
+
             candidates.sort(key=lambda x: x[1], reverse=True)
             top6_indices = {i for i, p in candidates[:6]}
             for i in top6_indices:
